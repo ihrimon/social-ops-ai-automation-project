@@ -119,6 +119,19 @@ export const commentsConfig = {
   commentsPerPost: Number(process.env.COMMENT_POLL_COMMENTS_LIMIT || 25),
 };
 
+/**
+ * Google Sheets lead sync (optional) — a free-tier "CRM" export for leads. Uses a
+ * service account (not OAuth): create one in Google Cloud, share the target Sheet
+ * with its email as an Editor, and set these. Unset, the sync silently no-ops.
+ */
+export const googleSheetsConfig = {
+  spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+  serviceAccountEmail: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+  // A PEM private key pasted into a single-line .env value keeps its newlines escaped as `\n`.
+  privateKey: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+  sheetName: process.env.GOOGLE_SHEETS_SHEET_NAME || "Leads",
+};
+
 /** Messenger consolidated-reply debounce queue/worker tuning. */
 export const messengerConfig = {
   replyDebounceMs: Number(process.env.MESSENGER_REPLY_DEBOUNCE_MS || 20 * 1000),
@@ -145,4 +158,5 @@ export const config = {
   webhook: webhookConfig,
   admin: adminConfig,
   cors: corsConfig,
+  googleSheets: googleSheetsConfig,
 };

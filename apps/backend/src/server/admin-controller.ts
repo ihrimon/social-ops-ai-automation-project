@@ -22,6 +22,7 @@ import {
   setLeadStatus,
   type LeadStatus,
 } from "../modules/messenger/lead.store.js";
+import { syncLeadToSheet } from "../modules/messenger/lead-sheet-sync.service.js";
 import {
   getKnowledgeBaseRaw,
   updateKnowledgeBaseRaw,
@@ -131,7 +132,10 @@ async function handleSetConversationLead(req: Request, res: Response): Promise<v
   }
 
   const note = typeof req.body?.note === "string" ? req.body.note.slice(0, 500) : undefined;
-  await setLeadStatus(String(req.params.userId), status as LeadStatus, note);
+  const userId = String(req.params.userId);
+  await setLeadStatus(userId, status as LeadStatus, note);
+  // Always sync a manual admin action, regardless of whether AI extraction ever found anything.
+  await syncLeadToSheet(userId);
   res.status(200).json({ ok: true });
 }
 

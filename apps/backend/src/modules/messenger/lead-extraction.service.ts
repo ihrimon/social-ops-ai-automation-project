@@ -8,10 +8,18 @@ import {
   type LeadRequirements,
 } from "../../ai/prompts/lead-extraction.prompt.js";
 import { getLeadRequirements, upsertLeadRequirements } from "./lead.store.js";
+import { syncLeadToSheet } from "./lead-sheet-sync.service.js";
 
 interface ConversationMessage {
   role: string;
   text: string;
+}
+
+/** Whether extraction actually found anything worth saving/syncing. */
+function hasAnyRequirementValue(extracted: LeadRequirements): boolean {
+  return Object.entries(extracted).some(([, value]) =>
+    Array.isArray(value) ? value.length > 0 : Boolean(value)
+  );
 }
 
 /**
@@ -38,7 +46,14 @@ export async function extractAndSaveLeadRequirements(
       LEAD_EXTRACTION_SCHEMA
     );
 
+    if (!hasAnyRequirementValue(extracted)) {
+      return;
+    }
+
     await upsertLeadRequirements(userId, extracted);
+    // Only sync when extraction actually found something — avoids appending a
+    // near-empty row to the Sheet for every casual "hi"/small-talk message.
+    await syncLeadToSheet(userId);
   } catch (error) {
     logger.warn(`Lead requirement extraction failed for ${userId}:`, {
       error: errorMessage(error),

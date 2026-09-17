@@ -14,6 +14,7 @@ AI-driven Facebook Page automation: scheduled article posts, Messenger reply gen
 - [🔑 Facebook App & Webhook Setup](#-facebook-app--webhook-setup)
 - [🧠 Customizing the Knowledge Base](#-customizing-the-knowledge-base)
 - [🛠️ Admin Dashboard](#️-admin-dashboard)
+- [📊 Google Sheets Lead Sync](#-google-sheets-lead-sync)
 - [🚀 Running the Project](#-running-the-project)
 - [🧪 Testing & Quality](#-testing--quality)
 - [🛡️ Reliability & Security Notes](#️-reliability--security-notes)
@@ -51,12 +52,17 @@ AI-driven Facebook Page automation: scheduled article posts, Messenger reply gen
 - `knowledge-base.json` is chunked and synced into MongoDB on startup (`modules/knowledge/knowledge.store.ts`), with each chunk embedded via Gemini and cached (`embedding_cache` collection, content-hash based to skip unchanged re-embeds).
 - Retrieval uses **hybrid search** — MongoDB `$vectorSearch` + `$text` — merged with Reciprocal Rank Fusion (RRF), with graceful fallback to a local in-memory/JSON cache if Mongo or vector search is unavailable.
 
-### 🛠️ 5. Admin Dashboard
+### 🧾 5. Lead Requirement Extraction & Sheets Sync
 
-- A separate React SPA (`admin-dashboard/`) for post approval, browsing Messenger conversations (with manual AI pause/resume), and editing the knowledge base — see [Admin Dashboard](#️-admin-dashboard) below.
+- Every Messenger reply cycle, Gemini's JSON mode (`ai/client.ts`'s `generateStructuredContent`) reads project-requirement facts (name, phone, business type, features, deadline, budget hint, etc.) back out of the conversation (`modules/messenger/lead-extraction.service.ts`) and merges them into the lead record — never overwriting previously-known fields with a blank.
+- Optionally synced to a Google Sheet (`modules/messenger/lead-sheet-sync.service.ts`) as a free, familiar "CRM" view — see [Google Sheets Lead Sync](#-google-sheets-lead-sync) below. Entirely optional; unconfigured, sync silently no-ops.
+
+### 🛠️ 6. Admin Dashboard
+
+- A separate React SPA (`admin-dashboard/`) for post approval, browsing Messenger conversations (with manual AI pause/resume, and AI-extracted requirements shown read-only), and editing the knowledge base — see [Admin Dashboard](#️-admin-dashboard) below.
 - Backed by a JWT-gated `/admin/*` API (`server/admin-controller.ts`) — a single shared admin password, rate-limited login, CORS scoped to just this router.
 
-### 🛡️ 6. Resilience & Security
+### 🛡️ 7. Resilience & Security
 
 - HMAC (`x-hub-signature-256`) verification on every webhook request (`integrations/facebook/webhook-verifier.ts`).
 - Zod-validated webhook payloads (`server/webhook.schema.ts`).
@@ -226,6 +232,12 @@ SENTRY_DSN=
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX_REQUESTS=100
 TRUST_PROXY_HOPS=0
+
+# Google Sheets lead sync (optional — see "Google Sheets Lead Sync" below)
+GOOGLE_SHEETS_SPREADSHEET_ID=
+GOOGLE_SERVICE_ACCOUNT_EMAIL=
+GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=
+GOOGLE_SHEETS_SHEET_NAME=Leads
 ```
 
 ---
@@ -286,6 +298,22 @@ npm run build            # production build (dist/) — deploy as a static site,
 ```
 
 The dashboard is a fully separate deploy target — it only needs network access to the backend's `/admin` API (CORS-gated) and never touches Mongo/Facebook/Gemini directly.
+
+---
+
+## 📊 Google Sheets Lead Sync
+
+Optional, zero-cost "CRM" export: every lead (AI-extracted requirements from `modules/messenger/lead-extraction.service.ts`, plus the admin's manual status/note) is mirrored to one row in a Google Sheet — so the business owner gets a familiar, shareable view without opening the admin dashboard. Fully optional; unset, `syncLeadToSheet()` (`modules/messenger/lead-sheet-sync.service.ts`) silently no-ops.
+
+This uses a **service account**, not OAuth — no per-user consent flow, and free.
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create a project (or reuse one) and enable the **Google Sheets API**.
+2. Create a **service account** (IAM & Admin → Service Accounts) and generate a JSON key.
+3. From that key file, take `client_email` → `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `private_key` → `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (paste as one line — the app un-escapes `\n` automatically).
+4. Create a Google Sheet, copy its ID from the URL (`.../d/<SPREADSHEET_ID>/edit`) → `GOOGLE_SHEETS_SPREADSHEET_ID`.
+5. Share that Sheet with the service account's email (from step 3) as **Editor**.
+
+The target worksheet (`GOOGLE_SHEETS_SHEET_NAME`, default `Leads`) is created automatically on first sync if it doesn't exist yet, with a fixed header row (`userId, status, note, contactName, contactPhone, businessType, hasExistingWebsite, pageCount, features, deadline, referenceWebsite, budgetHint, updatedAt`).
 
 ---
 
