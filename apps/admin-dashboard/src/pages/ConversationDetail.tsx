@@ -6,8 +6,52 @@ import {
   resumeConversation,
   setConversationLead,
   type ConversationDetail as ConversationDetailData,
+  type LeadRequirements,
   type LeadStatus,
 } from "../api/client";
+
+const REQUIREMENT_LABELS: Record<keyof LeadRequirements, string> = {
+  contactName: "Name",
+  contactPhone: "Phone",
+  businessType: "Business type",
+  hasExistingWebsite: "Existing website?",
+  pageCount: "Pages needed",
+  features: "Features",
+  deadline: "Deadline",
+  referenceWebsite: "Reference site",
+  budgetHint: "Budget hint",
+};
+
+function RequirementsCard({ requirements }: { requirements: LeadRequirements | null }) {
+  const rows = (Object.keys(REQUIREMENT_LABELS) as (keyof LeadRequirements)[])
+    .map((key) => ({ key, label: REQUIREMENT_LABELS[key], value: requirements?.[key] }))
+    .filter(({ value }) => (Array.isArray(value) ? value.length > 0 : Boolean(value)));
+
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <strong>Auto-detected requirements</strong>
+        <span className="muted">from conversation, AI-extracted</span>
+      </div>
+      <table style={{ width: "100%" }}>
+        <tbody>
+          {rows.map(({ key, label, value }) => (
+            <tr key={key}>
+              <td className="muted" style={{ paddingRight: "1rem", verticalAlign: "top" }}>
+                {label}
+              </td>
+              <td>{Array.isArray(value) ? value.join(", ") : value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export default function ConversationDetail() {
   const { userId = "" } = useParams();
@@ -92,6 +136,8 @@ export default function ConversationDetail() {
           )}
         </div>
       </div>
+
+      <RequirementsCard requirements={data.requirements} />
 
       <div className="thread">
         {data.messages.map((message, index) => (

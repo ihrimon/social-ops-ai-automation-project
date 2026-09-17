@@ -16,6 +16,7 @@ import {
 } from "../modules/messenger/queue.worker.js";
 import { rememberBotSentMessage } from "../modules/messenger/dedupe.store.js";
 import { generateMessengerReply } from "../modules/messenger/reply.service.js";
+import { extractAndSaveLeadRequirements } from "../modules/messenger/lead-extraction.service.js";
 import { sendMessengerReply } from "../integrations/facebook/messenger.js";
 
 let pendingReplyWorkerRunning = false;
@@ -61,6 +62,13 @@ async function processPendingReply(job: PendingReplyJob): Promise<void> {
         error: errorMessage(error),
       });
     }
+
+    // Best-effort — never allowed to affect delivery/claim completion above.
+    await extractAndSaveLeadRequirements(job.userId, [
+      ...conversationContext.recentMessages,
+      { role: "user", text: messageText },
+      { role: "assistant", text: reply },
+    ]);
 
     try {
       await completeClaim(job);

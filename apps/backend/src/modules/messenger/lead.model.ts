@@ -9,12 +9,35 @@ const { Schema, model, models } = mongoose;
  * has no TTL (unlike ConversationMessage/PendingReply, which prune/expire),
  * since this is the durable outcome record the analytics dashboard reports on.
  */
+/**
+ * AI-extracted project-requirement facts (name/phone/features/deadline/...),
+ * kept separate from the admin-only `status`/`note`/`markedAt` fields above —
+ * this subdocument is written by `lead-extraction.service.ts`, never by the
+ * admin dashboard.
+ */
+const leadRequirementsSchema = new Schema(
+  {
+    contactName: { type: String, required: false },
+    contactPhone: { type: String, required: false },
+    businessType: { type: String, required: false },
+    hasExistingWebsite: { type: String, required: false },
+    pageCount: { type: String, required: false },
+    features: { type: [String], required: false, default: undefined },
+    deadline: { type: String, required: false },
+    referenceWebsite: { type: String, required: false },
+    budgetHint: { type: String, required: false },
+  },
+  { _id: false }
+);
+
 const leadSchema = new Schema(
   {
     userId: { type: String, required: true, unique: true },
     status: { type: String, required: true, default: "none" }, // "none" | "lead" | "sale"
     note: { type: String, required: false },
     markedAt: { type: Date, default: () => new Date() },
+    requirements: { type: leadRequirementsSchema, required: false },
+    requirementsUpdatedAt: { type: Date, required: false },
   },
   { versionKey: false }
 );

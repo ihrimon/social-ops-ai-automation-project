@@ -108,6 +108,18 @@ export interface ConversationMessage {
   isHumanAdmin?: boolean;
 }
 
+export interface LeadRequirements {
+  contactName?: string | null;
+  contactPhone?: string | null;
+  businessType?: string | null;
+  hasExistingWebsite?: string | null;
+  pageCount?: string | null;
+  features?: string[] | null;
+  deadline?: string | null;
+  referenceWebsite?: string | null;
+  budgetHint?: string | null;
+}
+
 export interface ConversationDetail {
   userId: string;
   messages: ConversationMessage[];
@@ -115,6 +127,7 @@ export interface ConversationDetail {
   pausedUntil: string | null;
   leadStatus: LeadStatus;
   leadNote: string | null;
+  requirements: LeadRequirements | null;
 }
 
 export function getConversation(userId: string): Promise<ConversationDetail> {

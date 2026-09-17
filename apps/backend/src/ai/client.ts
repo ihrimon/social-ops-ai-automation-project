@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, type ResponseSchema } from "@google/generative-ai";
 import { aiConfig } from "../config/env.js";
 import { withRetry } from "../infra/retry.js";
 import { ExternalServiceError, errorMessage } from "../infra/errors.js";
@@ -26,6 +26,34 @@ export async function generateContent(
     const result = await withRetry(() => model.generateContent(prompt));
     const response = await result.response;
     return response.text().trim();
+  } catch (error) {
+    throw new ExternalServiceError("gemini", errorMessage(error), error);
+  }
+}
+
+/**
+ * Runs a prompt with Gemini's JSON mode (`responseSchema`) and parses the
+ * result, so callers get a typed object back instead of free text they'd
+ * have to parse themselves. Same retry/error-wrapping contract as
+ * `generateContent` — a request failure *or* an unparsable response both
+ * surface as one `ExternalServiceError("gemini", ...)`.
+ */
+export async function generateStructuredContent<T>(
+  modelName: string,
+  prompt: string,
+  responseSchema: ResponseSchema,
+  client: GoogleGenerativeAI = genAI
+): Promise<T> {
+  try {
+    const model = client.getGenerativeModel({
+      model: modelName,
+      generationConfig: { responseMimeType: "application/json", responseSchema },
+    });
+    const result = await withRetry(() =>
+      model.generateContent({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
+    );
+    const response = await result.response;
+    return JSON.parse(response.text().trim()) as T;
   } catch (error) {
     throw new ExternalServiceError("gemini", errorMessage(error), error);
   }

@@ -6,6 +6,7 @@ import {
 } from "../../src/ai/prompts/reply.prompt.js";
 import { buildCommentClassifyPrompt } from "../../src/ai/prompts/classify.prompt.js";
 import { buildArticlePrompt } from "../../src/ai/prompts/article.prompt.js";
+import { buildLeadExtractionPrompt } from "../../src/ai/prompts/lead-extraction.prompt.js";
 
 describe("formatMessages", () => {
   it("returns a placeholder for empty/undefined history", () => {
@@ -68,5 +69,32 @@ describe("buildArticlePrompt", () => {
     const prompt = buildArticlePrompt("landing page tips");
     expect(prompt).toContain("landing page tips");
     expect(prompt).toContain("বাংলায়");
+  });
+});
+
+describe("buildLeadExtractionPrompt", () => {
+  it("embeds the conversation and says nothing is known yet when requirements is null", () => {
+    const prompt = buildLeadExtractionPrompt(
+      [{ role: "user", text: "amar ekta ecommerce site lagbe" }],
+      null
+    );
+    expect(prompt).toContain("amar ekta ecommerce site lagbe");
+    expect(prompt).toContain("None known yet.");
+  });
+
+  it("embeds already-known scalar and array fields, skipping empty ones", () => {
+    const prompt = buildLeadExtractionPrompt([], {
+      contactName: "Rahim",
+      contactPhone: null,
+      features: ["contact form", "booking"],
+    });
+    expect(prompt).toContain("contactName: Rahim");
+    expect(prompt).toContain("features: contact form, booking");
+    expect(prompt).not.toContain("contactPhone");
+  });
+
+  it("instructs the model to only use the user's own words and never guess", () => {
+    const prompt = buildLeadExtractionPrompt([], null);
+    expect(prompt).toContain("Never guess or invent a value.");
   });
 });

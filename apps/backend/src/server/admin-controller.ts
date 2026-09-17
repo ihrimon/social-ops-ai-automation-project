@@ -119,6 +119,7 @@ async function handleGetConversation(req: Request, res: Response): Promise<void>
     ...pauseStatus,
     leadStatus: lead?.status ?? "none",
     leadNote: lead?.note ?? null,
+    requirements: lead?.requirements ?? null,
   });
 }
 

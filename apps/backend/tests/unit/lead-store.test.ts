@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Model } from "mongoose";
 import {
+  getLeadRequirements,
   getLeadStats,
   getLeadStatus,
   getLeadStatusesForUsers,
   listLeads,
   setLeadStatus,
+  upsertLeadRequirements,
 } from "../../src/modules/messenger/lead.store.js";
 import type { LeadDoc } from "../../src/modules/messenger/lead.model.js";
 
@@ -69,6 +71,18 @@ describe("getLeadStatus", () => {
       status: "sale",
       note: "closed",
       markedAt,
+      requirements: null,
+    });
+  });
+
+  it("passes through a stored requirements subdocument", async () => {
+    const findOne = vi.fn(() =>
+      chainable({ status: "lead", requirements: { contactName: "Rahim" } })
+    );
+    const model = fakeModel({ findOne });
+
+    expect((await getLeadStatus("user-1", model))?.requirements).toEqual({
+      contactName: "Rahim",
     });
   });
 });
@@ -136,5 +150,78 @@ describe("getLeadStats", () => {
     const stats = await getLeadStats(leadModel, conversationModel as any);
 
     expect(stats).toEqual({ totalConversations: 7, totalLeads: 5, totalSales: 2 });
+  });
+});
+
+describe("getLeadRequirements", () => {
+  it("defaults to status none and null requirements when never marked", async () => {
+    const findOne = vi.fn(() => chainable(null));
+    const model = fakeModel({ findOne });
+
+    expect(await getLeadRequirements("user-1", model)).toEqual({
+      status: "none",
+      requirements: null,
+    });
+  });
+
+  it("returns the stored status and requirements", async () => {
+    const findOne = vi.fn(() =>
+      chainable({ status: "lead", requirements: { contactName: "Karim" } })
+    );
+    const model = fakeModel({ findOne });
+
+    expect(await getLeadRequirements("user-1", model)).toEqual({
+      status: "lead",
+      requirements: { contactName: "Karim" },
+    });
+  });
+});
+
+describe("upsertLeadRequirements", () => {
+  it("only $sets non-empty scalar fields, trimmed, plus requirementsUpdatedAt", async () => {
+    const updateOne = vi.fn().mockResolvedValue({});
+    const model = fakeModel({ updateOne });
+
+    await upsertLeadRequirements(
+      "user-1",
+      {
+        contactName: "  Rahim  ",
+        contactPhone: null,
+        businessType: "",
+        deadline: "2 weeks",
+      },
+      model
+    );
+
+    expect(updateOne).toHaveBeenCalledOnce();
+    const [filter, update, options] = updateOne.mock.calls[0];
+    expect(filter).toEqual({ userId: "user-1" });
+    expect(update.$set["requirements.contactName"]).toBe("Rahim");
+    expect(update.$set["requirements.deadline"]).toBe("2 weeks");
+    expect(update.$set["requirements.contactPhone"]).toBeUndefined();
+    expect(update.$set["requirements.businessType"]).toBeUndefined();
+    expect(update.$set.requirementsUpdatedAt).toBeInstanceOf(Date);
+    expect(options).toEqual({ upsert: true, setDefaultsOnInsert: true });
+  });
+
+  it("unions non-empty features via $addToSet instead of replacing", async () => {
+    const updateOne = vi.fn().mockResolvedValue({});
+    const model = fakeModel({ updateOne });
+
+    await upsertLeadRequirements("user-1", { features: ["booking", "  ", "payment"] }, model);
+
+    const [, update] = updateOne.mock.calls[0];
+    expect(update.$addToSet).toEqual({
+      "requirements.features": { $each: ["booking", "payment"] },
+    });
+  });
+
+  it("omits $addToSet entirely when no features are given", async () => {
+    const updateOne = vi.fn().mockResolvedValue({});
+    const model = fakeModel({ updateOne });
+
+    await upsertLeadRequirements("user-1", { contactName: "Rahim" }, model);
+
+    expect(updateOne.mock.calls[0][1].$addToSet).toBeUndefined();
   });
 });
