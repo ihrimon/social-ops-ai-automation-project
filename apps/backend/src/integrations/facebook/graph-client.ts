@@ -38,16 +38,22 @@ export async function graphGet<T = any>(path: string, params: Record<string, unk
   }
 }
 
-/** POST to a Graph API path with the Page access token, retrying transient failures. */
+/**
+ * POST to a Graph API path, retrying transient failures. Defaults to the Page
+ * access token, but takes an override so other Graph API products under the
+ * same app (e.g. WhatsApp Cloud API, which authenticates with its own token)
+ * can reuse this instead of duplicating the retry/error-wrap logic.
+ */
 export async function graphPost<T = any>(
   path: string,
   body: unknown,
-  params: Record<string, unknown> = {}
+  params: Record<string, unknown> = {},
+  accessToken: string | undefined = facebookConfig.pageAccessToken
 ) {
   try {
     return await withRetry(() =>
       axios.post<T>(graphUrl(path), body, {
-        params: { access_token: facebookConfig.pageAccessToken, ...params },
+        params: { access_token: accessToken, ...params },
         headers: { "Content-Type": "application/json" },
       })
     );

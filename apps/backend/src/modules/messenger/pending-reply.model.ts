@@ -15,6 +15,8 @@ const pendingMessageSchema = new Schema(
 const pendingReplySchema = new Schema(
   {
     userId: { type: String, required: true, unique: true },
+    /** Which Send API to use for delivery — set once, on first insert, by `queueUserMessage`. */
+    platform: { type: String, enum: ["messenger", "whatsapp"], default: "messenger" },
     messages: { type: [pendingMessageSchema], default: [] },
     status: { type: String, required: true, default: "idle" },
     hasPendingMessages: { type: Boolean, default: false },

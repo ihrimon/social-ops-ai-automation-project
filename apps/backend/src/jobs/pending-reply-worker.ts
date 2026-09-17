@@ -18,6 +18,7 @@ import { rememberBotSentMessage } from "../modules/messenger/dedupe.store.js";
 import { generateMessengerReply } from "../modules/messenger/reply.service.js";
 import { extractAndSaveLeadRequirements } from "../modules/messenger/lead-extraction.service.js";
 import { sendMessengerReply } from "../integrations/facebook/messenger.js";
+import { sendWhatsAppReply } from "../integrations/whatsapp/send.js";
 
 let pendingReplyWorkerRunning = false;
 
@@ -42,7 +43,8 @@ async function processPendingReply(job: PendingReplyJob): Promise<void> {
       return;
     }
 
-    const sentResult: any = await sendMessengerReply(job.userId, reply);
+    const sendReply = job.platform === "whatsapp" ? sendWhatsAppReply : sendMessengerReply;
+    const sentResult: any = await sendReply(job.userId, reply);
     if (!sentResult?.message_id) {
       throw new Error("Messenger did not return a message ID.");
     }

@@ -1,6 +1,6 @@
 # 🤖 Social Ops AI Automation
 
-AI-driven Facebook Page automation: scheduled article posts, Messenger reply generation with conversation memory, comment moderation, and a Mongo-backed RAG knowledge base powered by **Google Gemini**.
+AI-driven Facebook Page (+ optional WhatsApp) automation: scheduled article posts, Messenger/WhatsApp reply generation with conversation memory, comment moderation, and a Mongo-backed RAG knowledge base powered by **Google Gemini**.
 
 ---
 
@@ -12,6 +12,7 @@ AI-driven Facebook Page automation: scheduled article posts, Messenger reply gen
 - [📋 Prerequisites](#-prerequisites)
 - [⚙️ Environment Variables](#️-environment-variables)
 - [🔑 Facebook App & Webhook Setup](#-facebook-app--webhook-setup)
+- [📱 WhatsApp Cloud API Setup](#-whatsapp-cloud-api-setup)
 - [🧠 Customizing the Knowledge Base](#-customizing-the-knowledge-base)
 - [🛠️ Admin Dashboard](#️-admin-dashboard)
 - [📊 Google Sheets Lead Sync](#-google-sheets-lead-sync)
@@ -32,11 +33,12 @@ AI-driven Facebook Page automation: scheduled article posts, Messenger reply gen
 - **Crash-safe topic claim**: if article generation or posting fails after a topic is claimed, the topic is reverted to unused so it isn't lost from the queue.
 - **Optional approval gate**: set `REQUIRE_POST_APPROVAL=true` to hold the generated draft for admin approval (via the [Admin Dashboard](#️-admin-dashboard)) instead of auto-publishing. Off by default — the fully-automatic flow above is unchanged.
 
-### 💬 2. Messenger Auto-Responder
+### 💬 2. Messenger + WhatsApp Auto-Responder
 
 - Incoming messages are buffered per user and debounced (`modules/messenger/queue.worker.ts`) so rapid-fire messages get one consolidated AI reply instead of several.
-- Reply generation (`modules/messenger/reply.service.ts`) pulls relevant context via the RAG knowledge store and recent conversation history.
-- **Human admin handoff**: detects `is_echo` events from a human agent replying manually and pauses AI replies for that user for a configurable window.
+- Reply generation (`modules/messenger/reply.service.ts`) pulls relevant context via the RAG knowledge store and recent conversation history — shared by both channels.
+- Each conversation records which platform it came from (`pending_replies.platform`) so delivery routes to the right Send API (`integrations/facebook/messenger.ts` or `integrations/whatsapp/send.ts`) — see [WhatsApp Cloud API Setup](#-whatsapp-cloud-api-setup) to enable the second channel (optional, off unless configured).
+- **Human admin handoff (Messenger only)**: detects `is_echo` events from a human agent replying manually and pauses AI replies for that user for a configurable window. WhatsApp Cloud API has no equivalent signal, so this doesn't apply there yet.
 - Claim/lease based worker with crash recovery (expired leases are reclaimed; already-delivered replies are never resent).
 
 ### 💬 3. Public Comment Auto-Reply
@@ -238,6 +240,10 @@ GOOGLE_SHEETS_SPREADSHEET_ID=
 GOOGLE_SERVICE_ACCOUNT_EMAIL=
 GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=
 GOOGLE_SHEETS_SHEET_NAME=Leads
+
+# WhatsApp Cloud API (optional — see "WhatsApp Cloud API Setup" below)
+WHATSAPP_ACCESS_TOKEN=
+WHATSAPP_PHONE_NUMBER_ID=
 ```
 
 ---
@@ -251,6 +257,21 @@ GOOGLE_SHEETS_SHEET_NAME=Leads
 5. **Local tunneling**: expose port 3000, e.g. `ngrok http 3000` or `cloudflared tunnel --url http://localhost:3000`.
 6. **Webhook subscription**: App Dashboard → Webhooks → Page → Callback URL `https://<your-tunnel>/webhook`, Verify Token = `FB_VERIFY_TOKEN`. Subscribe to `messages`, `messaging_postbacks`, `message_echoes`, `feed`.
 7. Messenger → Settings → Webhooks → subscribe your Page.
+
+---
+
+## 📱 WhatsApp Cloud API Setup
+
+Optional second channel — reuses the _same_ Meta App, App Secret, verify token, and
+webhook URL from the section above, so most of the setup is already done.
+
+1. On the same App (from [🔑 Facebook App & Webhook Setup](#-facebook-app--webhook-setup)) → add the **WhatsApp** product.
+2. WhatsApp → API Setup gives you a free test phone number and its **Phone number ID** → `WHATSAPP_PHONE_NUMBER_ID`.
+3. Generate a permanent token: Business Settings → Users → System Users → create one, assign it to the WhatsApp app with `whatsapp_business_messaging` permission, generate a token → `WHATSAPP_ACCESS_TOKEN`. (The temporary 24-hour token from API Setup also works for quick testing.)
+4. App Dashboard → Webhooks → switch the object dropdown to **whatsapp_business_account** → subscribe to the `messages` field, using the _same_ callback URL and verify token already configured for the Page.
+5. In API Setup, add your own WhatsApp number as a test recipient (free tier allows up to 5) and send it a message — that's what triggers the bot's first reply.
+
+**Current scope**: text-only replies, using the same RAG/reply pipeline as Messenger (`modules/messenger/reply.service.ts`). No human-admin handoff detection yet (WhatsApp Cloud API has no equivalent to Messenger's `is_echo` signal), and no media/template messages. The bot only ever replies to an inbound message, so it always stays within WhatsApp's 24-hour customer-service window — it never needs a pre-approved template.
 
 ---
 

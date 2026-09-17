@@ -120,6 +120,17 @@ export const commentsConfig = {
 };
 
 /**
+ * WhatsApp Cloud API (optional) — reuses the same Meta App as `facebookConfig`
+ * (same `FB_APP_SECRET`/`FB_VERIFY_TOKEN`, one webhook subscribed to both the
+ * "page" and "whatsapp_business_account" objects), so only the send-side
+ * credentials are needed here.
+ */
+export const whatsappConfig = {
+  accessToken: process.env.WHATSAPP_ACCESS_TOKEN,
+  phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
+};
+
+/**
  * Google Sheets lead sync (optional) — a free-tier "CRM" export for leads. Uses a
  * service account (not OAuth): create one in Google Cloud, share the target Sheet
  * with its email as an Editor, and set these. Unset, the sync silently no-ops.
@@ -159,4 +170,5 @@ export const config = {
   admin: adminConfig,
   cors: corsConfig,
   googleSheets: googleSheetsConfig,
+  whatsapp: whatsappConfig,
 };

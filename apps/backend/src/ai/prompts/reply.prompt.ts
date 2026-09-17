@@ -30,7 +30,7 @@ export function buildMessengerReplyPrompt(
   relevantMemories: ConversationMessage[],
   recentMessages: ConversationMessage[]
 ): string {
-  return `You are replying to a Facebook Page inbox message for a web developer.
+  return `You are replying to an inbox message for a web developer.
 
 Relevant business skills and rules:
 ${formatKnowledgeBase(relevantKnowledge)}

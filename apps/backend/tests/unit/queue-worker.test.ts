@@ -51,6 +51,7 @@ function fakeJob(overrides: Partial<PendingReplyJob> = {}): PendingReplyJob {
   return {
     _id: "job-1",
     userId: "user-1",
+    platform: "messenger",
     messages: [{ id: "m1", text: "hi", receivedAt: new Date() }],
     claimId: "claim-1",
     claimedAt: new Date(),
@@ -63,13 +64,33 @@ describe("queueUserMessage", () => {
     const updateOne = vi.fn().mockResolvedValue({});
     const model = fakeModel({ collection: { updateOne } });
 
-    await queueUserMessage("user-1", "hello", "msg-1", model);
+    await queueUserMessage("user-1", "hello", "msg-1", "messenger", model);
 
     expect(updateOne).toHaveBeenCalledOnce();
     const [filter, pipeline, options] = updateOne.mock.calls[0];
     expect(filter).toEqual({ userId: "user-1" });
     expect(options).toEqual({ upsert: true });
     expect(JSON.stringify(pipeline)).toContain('"id":"msg-1"');
+  });
+
+  it("defaults platform to messenger when not given", async () => {
+    const updateOne = vi.fn().mockResolvedValue({});
+    const model = fakeModel({ collection: { updateOne } });
+
+    await queueUserMessage("user-1", "hello", "msg-1", undefined, model);
+
+    const [, pipeline] = updateOne.mock.calls[0];
+    expect(pipeline[0].$set.platform).toEqual({ $ifNull: ["$platform", "messenger"] });
+  });
+
+  it("sets platform via $ifNull (only applied on first insert) when whatsapp is passed", async () => {
+    const updateOne = vi.fn().mockResolvedValue({});
+    const model = fakeModel({ collection: { updateOne } });
+
+    await queueUserMessage("user-2", "hello", "msg-2", "whatsapp", model);
+
+    const [, pipeline] = updateOne.mock.calls[0];
+    expect(pipeline[0].$set.platform).toEqual({ $ifNull: ["$platform", "whatsapp"] });
   });
 });
 

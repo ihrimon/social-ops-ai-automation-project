@@ -11,6 +11,7 @@ import {
   isValidWebhookVerification,
   verifyFacebookSignature,
 } from "../integrations/facebook/webhook-verifier.js";
+import { isWhatsAppConfigured } from "../integrations/whatsapp/send.js";
 import { webhookPayloadSchema, type WebhookPayload } from "./webhook.schema.js";
 
 const MAX_BODY_BYTES = "1mb";
@@ -113,6 +114,58 @@ async function processCommentChange(change: any): Promise<void> {
   await moderateComment({ commentId, postId, commenterId, commentText });
 }
 
+let warnedWhatsAppNotConfigured = false;
+
+/**
+ * Handles WhatsApp Cloud API webhook `changes` entries (`whatsapp_business_account`
+ * object). Same signature verification and Zod envelope as Messenger — only the
+ * shape inside `change.value` differs (WhatsApp's documented `messages` field:
+ * `{ from, id, type, text: { body } }` per inbound message).
+ *
+ * No human-admin handoff detection here (unlike `processMessagingEvent`'s `is_echo`
+ * handling) — WhatsApp Cloud API has no equivalent signal for a manual takeover, so
+ * that's intentionally out of scope for now, not an oversight.
+ */
+async function processWhatsAppChange(change: any): Promise<void> {
+  if (change.field !== "messages") {
+    return;
+  }
+
+  if (!isWhatsAppConfigured()) {
+    if (!warnedWhatsAppNotConfigured) {
+      logger.warn(
+        "WhatsApp message received but WHATSAPP_ACCESS_TOKEN/WHATSAPP_PHONE_NUMBER_ID is not configured. Ignoring."
+      );
+      warnedWhatsAppNotConfigured = true;
+    }
+    return;
+  }
+
+  const messages = change.value?.messages || [];
+  for (const message of messages) {
+    const senderId = message.from;
+    const messageId = message.id;
+
+    if (!senderId || !messageId) {
+      continue;
+    }
+
+    if (!(await rememberIncomingMessage(messageId, senderId))) {
+      logger.info(`Duplicate WhatsApp event ignored: ${messageId}`);
+      continue;
+    }
+
+    const messageText = message.text?.body?.trim();
+    if (!messageText) {
+      logger.info(`Non-text WhatsApp event ignored: ${messageId}`);
+      continue;
+    }
+
+    await queueUserMessage(senderId, messageText, messageId, "whatsapp");
+    logger.info(`Queued WhatsApp message from ${senderId} for consolidated reply.`);
+  }
+}
+
 async function handleWebhookPost(req: Request, res: Response): Promise<void> {
   try {
     const rawBody = req.rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
@@ -139,8 +192,16 @@ async function handleWebhookPost(req: Request, res: Response): Promise<void> {
 
     res.status(200).send("EVENT_RECEIVED");
 
+    if (payload.object === "whatsapp_business_account") {
+      const whatsappChanges = payload.entry.flatMap((entry) => entry.changes || []);
+      for (const change of whatsappChanges) {
+        await processWhatsAppChange(change);
+      }
+      return;
+    }
+
     if (payload.object !== "page") {
-      logger.info("Ignoring non-page object event:", { object: payload.object });
+      logger.info("Ignoring unrecognized webhook object:", { object: payload.object });
       return;
     }
 

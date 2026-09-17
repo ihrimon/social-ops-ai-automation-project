@@ -13,6 +13,7 @@ export interface PendingReplyMessage {
 export interface PendingReplyJob {
   _id: unknown;
   userId: string;
+  platform: "messenger" | "whatsapp";
   messages: PendingReplyMessage[];
   claimId: string;
   claimedAt: Date;
@@ -38,6 +39,7 @@ export async function queueUserMessage(
   userId: string,
   text: string,
   messageId: string,
+  platform: "messenger" | "whatsapp" = "messenger",
   model: Model<PendingReplyDoc> = PendingReply
 ): Promise<void> {
   const now = new Date();
@@ -50,6 +52,8 @@ export async function queueUserMessage(
       {
         $set: {
           userId: { $ifNull: ["$userId", userId] },
+          // Set once on first insert — a userId's platform never changes after that.
+          platform: { $ifNull: ["$platform", platform] },
           createdAt: { $ifNull: ["$createdAt", now] },
           messages: {
             $slice: [
