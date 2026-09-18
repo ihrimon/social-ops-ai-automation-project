@@ -25,12 +25,20 @@ function wrapGraphError(error: unknown): never {
   throw error;
 }
 
-/** GET a Graph API path with the Page access token, retrying transient failures. */
-export async function graphGet<T = any>(path: string, params: Record<string, unknown> = {}) {
+/**
+ * GET a Graph API path, retrying transient failures. Defaults to the Page access
+ * token, but takes the same override `graphPost` does (e.g. for a WhatsApp media
+ * metadata lookup, which authenticates with its own token).
+ */
+export async function graphGet<T = any>(
+  path: string,
+  params: Record<string, unknown> = {},
+  accessToken: string | undefined = facebookConfig.pageAccessToken
+) {
   try {
     return await withRetry(() =>
       axios.get<T>(graphUrl(path), {
-        params: { access_token: facebookConfig.pageAccessToken, ...params },
+        params: { access_token: accessToken, ...params },
       })
     );
   } catch (error) {

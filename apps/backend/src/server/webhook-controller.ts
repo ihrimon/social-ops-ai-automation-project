@@ -13,9 +13,61 @@ import {
 } from "../integrations/facebook/webhook-verifier.js";
 import { isWhatsAppConfigured } from "../integrations/whatsapp/send.js";
 import { isInstagramConfigured } from "../integrations/instagram/send.js";
+import { fetchMetaAttachmentAsBase64 } from "../integrations/facebook/media.js";
+import { fetchWhatsAppMediaAsBase64 } from "../integrations/whatsapp/media.js";
+import {
+  describeImageMessage,
+  transcribeAudioMessage,
+} from "../modules/messenger/media-transcription.service.js";
 import { webhookPayloadSchema, type WebhookPayload } from "./webhook.schema.js";
 
 const MAX_BODY_BYTES = "1mb";
+
+/**
+ * Turns a Messenger/Instagram attachment (image or voice note) into text so it
+ * can flow through the same text-only reply pipeline as a typed message. Any
+ * other attachment type (video, document, sticker, location, ...) is
+ * intentionally left unsupported for now — returns `null`, same as no
+ * attachment at all.
+ */
+async function describeMetaAttachment(attachments: any): Promise<string | null> {
+  const attachment = Array.isArray(attachments) ? attachments[0] : null;
+  const url = attachment?.payload?.url;
+  if (!url || (attachment.type !== "image" && attachment.type !== "audio")) {
+    return null;
+  }
+
+  const media = await fetchMetaAttachmentAsBase64(url);
+  if (!media) {
+    return null;
+  }
+
+  return attachment.type === "image"
+    ? describeImageMessage(media.data, media.mimeType)
+    : transcribeAudioMessage(media.data, media.mimeType);
+}
+
+/** WhatsApp equivalent of `describeMetaAttachment` — media is referenced by ID, not a URL. */
+async function describeWhatsAppMedia(message: any): Promise<string | null> {
+  const mediaId =
+    message.type === "image"
+      ? message.image?.id
+      : message.type === "audio"
+        ? message.audio?.id
+        : null;
+  if (!mediaId) {
+    return null;
+  }
+
+  const media = await fetchWhatsAppMediaAsBase64(mediaId);
+  if (!media) {
+    return null;
+  }
+
+  return message.type === "image"
+    ? describeImageMessage(media.data, media.mimeType)
+    : transcribeAudioMessage(media.data, media.mimeType);
+}
 
 /**
  * Handles one Messenger/Instagram `messaging` event. Instagram DMs use the exact
@@ -65,10 +117,14 @@ async function processMessagingEvent(
     return;
   }
 
-  const messageText = message.text?.trim();
+  let messageText = message.text?.trim();
 
   if (!messageText) {
-    logger.info(`Non-text ${platform} event ignored: ${messageId}`);
+    messageText = await describeMetaAttachment(message.attachments);
+  }
+
+  if (!messageText) {
+    logger.info(`Non-text/unsupported ${platform} event ignored: ${messageId}`);
     return;
   }
 
@@ -217,9 +273,13 @@ async function processWhatsAppChange(change: any): Promise<void> {
       continue;
     }
 
-    const messageText = message.text?.body?.trim();
+    let messageText = message.text?.body?.trim();
     if (!messageText) {
-      logger.info(`Non-text WhatsApp event ignored: ${messageId}`);
+      messageText = await describeWhatsAppMedia(message);
+    }
+
+    if (!messageText) {
+      logger.info(`Non-text/unsupported WhatsApp event ignored: ${messageId}`);
       continue;
     }
 

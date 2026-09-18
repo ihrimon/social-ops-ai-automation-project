@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, type ResponseSchema } from "@google/generative-ai";
+import { GoogleGenerativeAI, type Part, type ResponseSchema } from "@google/generative-ai";
 import { aiConfig } from "../config/env.js";
 import { withRetry } from "../infra/retry.js";
 import { ExternalServiceError, errorMessage } from "../infra/errors.js";
@@ -24,6 +24,30 @@ export async function generateContent(
   try {
     const model = client.getGenerativeModel({ model: modelName });
     const result = await withRetry(() => model.generateContent(prompt));
+    const response = await result.response;
+    return response.text().trim();
+  } catch (error) {
+    throw new ExternalServiceError("gemini", errorMessage(error), error);
+  }
+}
+
+/**
+ * Runs a multimodal prompt (text mixed with an `inlineData` image/audio blob)
+ * through Gemini. Same retry/error-wrapping contract as `generateContent` — used
+ * for describing images and transcribing voice notes (`media-transcription.service.ts`)
+ * so a webhook event without a `text` field can still be turned into text and fed
+ * through the existing text-only reply pipeline.
+ */
+export async function generateContentFromParts(
+  modelName: string,
+  parts: Part[],
+  client: GoogleGenerativeAI = genAI
+): Promise<string> {
+  try {
+    const model = client.getGenerativeModel({ model: modelName });
+    const result = await withRetry(() =>
+      model.generateContent({ contents: [{ role: "user", parts }] })
+    );
     const response = await result.response;
     return response.text().trim();
   } catch (error) {

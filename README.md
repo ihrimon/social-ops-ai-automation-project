@@ -41,6 +41,7 @@ AI-driven Facebook Page (+ optional WhatsApp and Instagram) automation: schedule
 - Reply generation (`modules/messenger/reply.service.ts`) pulls relevant context via the RAG knowledge store and recent conversation history — shared by all three channels.
 - Each conversation records which platform it came from (`pending_replies.platform`) so delivery routes to the right Send API (`integrations/facebook/messenger.ts`, `integrations/whatsapp/send.ts`, or `integrations/instagram/send.ts`) — see [WhatsApp Cloud API Setup](#-whatsapp-cloud-api-setup) / [Instagram Setup](#-instagram-setup) to enable the extra channels (optional, off unless configured).
 - **Human admin handoff (Messenger + Instagram)**: detects `is_echo` events from a human agent replying manually and pauses AI replies for that user for a configurable window — Instagram uses the same mechanism as Messenger. WhatsApp Cloud API has no equivalent signal, so this doesn't apply there yet.
+- **Multimodal input**: a photo or voice note (on any of the three channels) is converted to text once, at ingestion (`modules/messenger/media-transcription.service.ts` — Gemini describes images, transcribes voice notes), then flows through the exact same text-only pipeline as a typed message. Image- and audio-only for now — no video, documents, stickers, or location messages.
 - Claim/lease based worker with crash recovery (expired leases are reclaimed; already-delivered replies are never resent).
 
 ### 💬 3. Public Comment Auto-Reply (Facebook + Instagram)
