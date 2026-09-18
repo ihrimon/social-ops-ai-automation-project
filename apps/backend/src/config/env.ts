@@ -131,6 +131,16 @@ export const whatsappConfig = {
 };
 
 /**
+ * Telegram alert (optional) — instant push to the owner's phone when a Messenger/
+ * WhatsApp message is classified as negative-sentiment or high-urgency. Create a
+ * bot via @BotFather (free) and read your own chat_id from `getUpdates`.
+ */
+export const telegramConfig = {
+  botToken: process.env.TELEGRAM_BOT_TOKEN,
+  chatId: process.env.TELEGRAM_CHAT_ID,
+};
+
+/**
  * Google Sheets lead sync (optional) — a free-tier "CRM" export for leads. Uses a
  * service account (not OAuth): create one in Google Cloud, share the target Sheet
  * with its email as an Editor, and set these. Unset, the sync silently no-ops.
@@ -171,4 +181,5 @@ export const config = {
   cors: corsConfig,
   googleSheets: googleSheetsConfig,
   whatsapp: whatsappConfig,
+  telegram: telegramConfig,
 };

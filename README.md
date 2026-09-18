@@ -13,6 +13,7 @@ AI-driven Facebook Page (+ optional WhatsApp) automation: scheduled article post
 - [⚙️ Environment Variables](#️-environment-variables)
 - [🔑 Facebook App & Webhook Setup](#-facebook-app--webhook-setup)
 - [📱 WhatsApp Cloud API Setup](#-whatsapp-cloud-api-setup)
+- [🔔 Telegram Urgency Alerts](#-telegram-urgency-alerts)
 - [🧠 Customizing the Knowledge Base](#-customizing-the-knowledge-base)
 - [🛠️ Admin Dashboard](#️-admin-dashboard)
 - [📊 Google Sheets Lead Sync](#-google-sheets-lead-sync)
@@ -59,12 +60,16 @@ AI-driven Facebook Page (+ optional WhatsApp) automation: scheduled article post
 - Every Messenger reply cycle, Gemini's JSON mode (`ai/client.ts`'s `generateStructuredContent`) reads project-requirement facts (name, phone, business type, features, deadline, budget hint, etc.) back out of the conversation (`modules/messenger/lead-extraction.service.ts`) and merges them into the lead record — never overwriting previously-known fields with a blank.
 - Optionally synced to a Google Sheet (`modules/messenger/lead-sheet-sync.service.ts`) as a free, familiar "CRM" view — see [Google Sheets Lead Sync](#-google-sheets-lead-sync) below. Entirely optional; unconfigured, sync silently no-ops.
 
-### 🛠️ 6. Admin Dashboard
+### 🔔 6. Sentiment/Urgency Detection & Telegram Alerts
+
+- Every reply cycle, Gemini classifies the visitor's message tone (`modules/messenger/urgency-alert.service.ts`) and pushes an instant Telegram alert when it's negative-sentiment or high-urgency — an angry customer, a broken site, a payment issue — so the owner finds out without opening the dashboard. See [Telegram Urgency Alerts](#-telegram-urgency-alerts) below. Entirely optional; unconfigured, it silently no-ops.
+
+### 🛠️ 7. Admin Dashboard
 
 - A separate React SPA (`admin-dashboard/`) for post approval, browsing Messenger conversations (with manual AI pause/resume, and AI-extracted requirements shown read-only), and editing the knowledge base — see [Admin Dashboard](#️-admin-dashboard) below.
 - Backed by a JWT-gated `/admin/*` API (`server/admin-controller.ts`) — a single shared admin password, rate-limited login, CORS scoped to just this router.
 
-### 🛡️ 7. Resilience & Security
+### 🛡️ 8. Resilience & Security
 
 - HMAC (`x-hub-signature-256`) verification on every webhook request (`integrations/facebook/webhook-verifier.ts`).
 - Zod-validated webhook payloads (`server/webhook.schema.ts`).
@@ -244,6 +249,10 @@ GOOGLE_SHEETS_SHEET_NAME=Leads
 # WhatsApp Cloud API (optional — see "WhatsApp Cloud API Setup" below)
 WHATSAPP_ACCESS_TOKEN=
 WHATSAPP_PHONE_NUMBER_ID=
+
+# Telegram urgency alerts (optional — see "Telegram Urgency Alerts" below)
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 ```
 
 ---
@@ -272,6 +281,18 @@ webhook URL from the section above, so most of the setup is already done.
 5. In API Setup, add your own WhatsApp number as a test recipient (free tier allows up to 5) and send it a message — that's what triggers the bot's first reply.
 
 **Current scope**: text-only replies, using the same RAG/reply pipeline as Messenger (`modules/messenger/reply.service.ts`). No human-admin handoff detection yet (WhatsApp Cloud API has no equivalent to Messenger's `is_echo` signal), and no media/template messages. The bot only ever replies to an inbound message, so it always stays within WhatsApp's 24-hour customer-service window — it never needs a pre-approved template.
+
+---
+
+## 🔔 Telegram Urgency Alerts
+
+Optional: an instant Telegram push to the owner whenever a Messenger/WhatsApp message is classified (Gemini JSON mode, `modules/messenger/urgency-alert.service.ts`) as negative-sentiment or high-urgency — an angry customer, a broken/down site, a payment problem — so the owner finds out immediately instead of next time they open the admin dashboard. Entirely free, no paid API or app review.
+
+1. Message [@BotFather](https://t.me/BotFather) on Telegram → `/newbot` → follow the prompts → copy the token it gives you → `TELEGRAM_BOT_TOKEN`.
+2. Send your new bot any message (so Telegram registers a chat with it).
+3. Open `https://api.telegram.org/bot<TOKEN>/getUpdates` in a browser and read `"chat":{"id": ...}` from the response → `TELEGRAM_CHAT_ID`.
+
+Runs on every consolidated reply cycle, for both channels, and — unlike lead extraction — does **not** skip once a lead is marked "sale," since a post-sale support complaint can still be urgent. Unconfigured, it silently no-ops.
 
 ---
 

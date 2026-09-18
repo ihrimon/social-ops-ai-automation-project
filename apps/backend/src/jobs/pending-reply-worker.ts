@@ -17,6 +17,7 @@ import {
 import { rememberBotSentMessage } from "../modules/messenger/dedupe.store.js";
 import { generateMessengerReply } from "../modules/messenger/reply.service.js";
 import { extractAndSaveLeadRequirements } from "../modules/messenger/lead-extraction.service.js";
+import { checkAndAlertUrgency } from "../modules/messenger/urgency-alert.service.js";
 import { sendMessengerReply } from "../integrations/facebook/messenger.js";
 import { sendWhatsAppReply } from "../integrations/whatsapp/send.js";
 
@@ -71,6 +72,7 @@ async function processPendingReply(job: PendingReplyJob): Promise<void> {
       { role: "user", text: messageText },
       { role: "assistant", text: reply },
     ]);
+    await checkAndAlertUrgency(job.userId, job.platform, messageText);
 
     try {
       await completeClaim(job);
