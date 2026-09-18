@@ -136,3 +136,21 @@ export async function getLeadStats(
 
   return { totalConversations: userIds.length, totalLeads, totalSales };
 }
+
+/**
+ * Leads/sales marked since a given date — the weekly report's "this week" numbers
+ * (`jobs/weekly-report-job.ts`), as opposed to `getLeadStats`'s all-time totals.
+ * Uses `markedAt` as a "became a lead/sale around this time" proxy — simple and
+ * good enough for a weekly digest, not an event-history ledger.
+ */
+export async function getRecentLeadStats(
+  since: Date,
+  model: Model<LeadDoc> = Lead
+): Promise<{ leads: number; sales: number }> {
+  const [leads, sales] = await Promise.all([
+    model.countDocuments({ status: "lead", markedAt: { $gte: since } }),
+    model.countDocuments({ status: "sale", markedAt: { $gte: since } }),
+  ]);
+
+  return { leads, sales };
+}

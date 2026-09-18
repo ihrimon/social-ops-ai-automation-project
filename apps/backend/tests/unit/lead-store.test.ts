@@ -5,6 +5,7 @@ import {
   getLeadStats,
   getLeadStatus,
   getLeadStatusesForUsers,
+  getRecentLeadStats,
   listLeads,
   setLeadStatus,
   upsertLeadRequirements,
@@ -223,5 +224,22 @@ describe("upsertLeadRequirements", () => {
     await upsertLeadRequirements("user-1", { contactName: "Rahim" }, model);
 
     expect(updateOne.mock.calls[0][1].$addToSet).toBeUndefined();
+  });
+});
+
+describe("getRecentLeadStats", () => {
+  it("counts leads/sales marked since the given date", async () => {
+    const countDocuments = vi
+      .fn()
+      .mockResolvedValueOnce(3) // status: "lead"
+      .mockResolvedValueOnce(1); // status: "sale"
+    const model = fakeModel({ countDocuments });
+    const since = new Date("2026-09-01T00:00:00Z");
+
+    const stats = await getRecentLeadStats(since, model);
+
+    expect(stats).toEqual({ leads: 3, sales: 1 });
+    expect(countDocuments).toHaveBeenCalledWith({ status: "lead", markedAt: { $gte: since } });
+    expect(countDocuments).toHaveBeenCalledWith({ status: "sale", markedAt: { $gte: since } });
   });
 });

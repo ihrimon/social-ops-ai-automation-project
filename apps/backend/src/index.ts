@@ -4,6 +4,7 @@ import { initSentry, captureException } from "./infra/sentry.js";
 import { initDatabase } from "./integrations/mongo/db-init.js";
 import { closeMongoClient } from "./integrations/mongo/client.js";
 import { scheduleDailyPostJob } from "./jobs/daily-post-job.js";
+import { scheduleWeeklyReportJob } from "./jobs/weekly-report-job.js";
 import { startPendingReplyWorker } from "./jobs/pending-reply-worker.js";
 import { startCommentPollWorker } from "./jobs/comment-poll-worker.js";
 import { startWebhookServer } from "./server/http-server.js";
@@ -34,6 +35,7 @@ async function bootstrap(): Promise<void> {
   initSentry();
 
   scheduleDailyPostJob();
+  scheduleWeeklyReportJob();
 
   // Initialize Database connection, warm up indexes, and populate local knowledge cache
   await initDatabase().catch((err) => {

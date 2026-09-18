@@ -66,6 +66,7 @@ AI-driven Facebook Page (+ optional WhatsApp and Instagram) automation: schedule
 ### 🔔 6. Sentiment/Urgency Detection & Telegram Alerts
 
 - Every reply cycle, Gemini classifies the visitor's message tone (`modules/messenger/urgency-alert.service.ts`) and pushes an instant Telegram alert when it's negative-sentiment or high-urgency — an angry customer, a broken site, a payment issue — so the owner finds out without opening the dashboard. See [Telegram Urgency Alerts](#-telegram-urgency-alerts) below. Entirely optional; unconfigured, it silently no-ops.
+- **Weekly digest**: every Sunday 9am (Asia/Dhaka), `jobs/weekly-report-job.ts` pushes one Telegram summary — posts published + engagement, new leads/sales, and customer message volume by channel for the past week — so the owner gets a passive "how did this week go" signal without opening the dashboard. Reuses the same `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` as the alerts above; no separate setup.
 
 ### 🛠️ 7. Admin Dashboard
 

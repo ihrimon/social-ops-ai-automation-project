@@ -200,6 +200,25 @@ export async function getConversationHistory(
   return messages.reverse();
 }
 
+/**
+ * Customer message counts by platform since a given date — the weekly report's
+ * (`jobs/weekly-report-job.ts`) per-channel volume numbers. Only counts `role:
+ * "user"` messages (what the customer actually sent), not the AI's replies.
+ * Conversations predating the multi-channel rollout (no `platform` saved) are
+ * grouped under `"unknown"` rather than dropped.
+ */
+export async function getWeeklyMessageStats(
+  since: Date,
+  model: Model<ConversationMessageDoc> = ConversationMessage
+): Promise<Record<string, number>> {
+  const rows = await model.aggregate([
+    { $match: { role: "user", createdAt: { $gte: since } } },
+    { $group: { _id: { $ifNull: ["$platform", "unknown"] }, count: { $sum: 1 } } },
+  ]);
+
+  return Object.fromEntries(rows.map((row) => [row._id as string, row.count as number]));
+}
+
 export async function getLastHumanInteractionTime(
   userId: string,
   model: Model<ConversationMessageDoc> = ConversationMessage
