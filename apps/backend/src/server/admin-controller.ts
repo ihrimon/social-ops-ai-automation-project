@@ -114,9 +114,16 @@ async function handleGetConversation(req: Request, res: Response): Promise<void>
     getPauseStatus(userId),
     getLeadStatus(userId),
   ]);
+  // Most recent message that has a platform set — so an old conversation whose
+  // latest message predates the multi-channel rollout still shows the right
+  // channel if an earlier message in it has one.
+  const platform =
+    ([...messages].reverse() as any[]).find((message) => message.platform)?.platform ?? null;
+
   res.status(200).json({
     userId,
     messages,
+    platform,
     ...pauseStatus,
     leadStatus: lead?.status ?? "none",
     leadNote: lead?.note ?? null,

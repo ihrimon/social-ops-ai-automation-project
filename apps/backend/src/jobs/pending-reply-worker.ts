@@ -64,8 +64,8 @@ async function processPendingReply(job: PendingReplyJob): Promise<void> {
     // Delivery succeeded. Do not retry the message just because storing its
     // optional long-term memory has a temporary problem.
     try {
-      await addConversationMessage(job.userId, "user", messageText);
-      await addConversationMessage(job.userId, "assistant", reply);
+      await addConversationMessage(job.userId, "user", messageText, { platform: job.platform });
+      await addConversationMessage(job.userId, "assistant", reply, { platform: job.platform });
     } catch (error) {
       logger.error(`Could not save Messenger conversation for ${job.userId}:`, {
         error: errorMessage(error),

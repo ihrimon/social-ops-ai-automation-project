@@ -163,6 +163,9 @@ export async function listConversations(
         lastMessageRole: { $first: "$role" },
         lastMessageAt: { $first: "$createdAt" },
         messageCount: { $sum: 1 },
+        // Sorted desc above, so this is the most recent message's platform —
+        // absent on conversations entirely predating the multi-channel rollout.
+        platform: { $first: "$platform" },
       },
     },
     { $sort: { lastMessageAt: -1 } },
@@ -175,6 +178,7 @@ export async function listConversations(
         lastMessageRole: 1,
         lastMessageAt: 1,
         messageCount: 1,
+        platform: 1,
       },
     },
   ]);
@@ -190,7 +194,7 @@ export async function getConversationHistory(
     .find({ userId })
     .sort({ createdAt: -1 })
     .limit(limit)
-    .select({ _id: 0, role: 1, text: 1, createdAt: 1, isHumanAdmin: 1 })
+    .select({ _id: 0, role: 1, text: 1, createdAt: 1, isHumanAdmin: 1, platform: 1 })
     .lean();
 
   return messages.reverse();

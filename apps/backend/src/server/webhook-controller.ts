@@ -104,7 +104,10 @@ async function processMessagingEvent(
       logger.info(
         `Human admin reply detected. Saving to conversation memory for user ${actualUserId}: ${messageText}`
       );
-      await addConversationMessage(actualUserId, "assistant", messageText, { isHumanAdmin: true });
+      await addConversationMessage(actualUserId, "assistant", messageText, {
+        isHumanAdmin: true,
+        platform,
+      });
       await pauseUserReplies(actualUserId);
     }
     return;

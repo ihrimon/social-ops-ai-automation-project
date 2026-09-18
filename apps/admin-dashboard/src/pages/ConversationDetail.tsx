@@ -96,6 +96,7 @@ export default function ConversationDetail() {
       </p>
       <div className="card-header">
         <h2>{userId}</h2>
+        {data.platform && <span className="muted">via {data.platform}</span>}
         {data.paused ? (
           <button onClick={handleResume}>Resume AI replies</button>
         ) : (

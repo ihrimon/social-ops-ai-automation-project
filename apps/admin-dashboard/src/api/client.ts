@@ -95,6 +95,7 @@ export interface ConversationSummary {
   lastMessageAt: string;
   messageCount: number;
   leadStatus: LeadStatus;
+  platform?: string | null;
 }
 
 export function listConversations(): Promise<{ conversations: ConversationSummary[] }> {
@@ -123,6 +124,7 @@ export interface LeadRequirements {
 export interface ConversationDetail {
   userId: string;
   messages: ConversationMessage[];
+  platform?: string | null;
   paused: boolean;
   pausedUntil: string | null;
   leadStatus: LeadStatus;

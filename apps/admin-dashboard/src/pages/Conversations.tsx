@@ -23,6 +23,7 @@ export default function Conversations() {
         <thead>
           <tr>
             <th>User</th>
+            <th>Channel</th>
             <th>Last message</th>
             <th>Messages</th>
             <th>When</th>
@@ -37,6 +38,7 @@ export default function Conversations() {
                   {conversation.userId}
                 </Link>
               </td>
+              <td>{conversation.platform ?? "—"}</td>
               <td className="truncate">
                 {conversation.lastMessageRole}: {conversation.lastMessageText}
               </td>
