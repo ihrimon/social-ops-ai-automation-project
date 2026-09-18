@@ -22,7 +22,7 @@ const MESSAGE_SNIPPET_LENGTH = 300;
  */
 export async function checkAndAlertUrgency(
   userId: string,
-  platform: "messenger" | "whatsapp",
+  platform: "messenger" | "whatsapp" | "instagram",
   messageText: string
 ): Promise<void> {
   if (!isTelegramConfigured()) {

@@ -120,6 +120,16 @@ export const commentsConfig = {
 };
 
 /**
+ * Instagram DM + comment automation (optional) — an Instagram professional
+ * account linked to the Page uses the same Page access token (with added
+ * `instagram_*` permissions), so only the Instagram Business Account ID is
+ * needed here.
+ */
+export const instagramConfig = {
+  igUserId: process.env.IG_USER_ID,
+};
+
+/**
  * WhatsApp Cloud API (optional) — reuses the same Meta App as `facebookConfig`
  * (same `FB_APP_SECRET`/`FB_VERIFY_TOKEN`, one webhook subscribed to both the
  * "page" and "whatsapp_business_account" objects), so only the send-side
@@ -181,5 +191,6 @@ export const config = {
   cors: corsConfig,
   googleSheets: googleSheetsConfig,
   whatsapp: whatsappConfig,
+  instagram: instagramConfig,
   telegram: telegramConfig,
 };

@@ -1,4 +1,4 @@
-import { aiConfig, facebookConfig } from "../../config/env.js";
+import { aiConfig, facebookConfig, instagramConfig } from "../../config/env.js";
 import { logger } from "../../infra/logger.js";
 import { generateContent } from "../../ai/client.js";
 import { errorMessage } from "../../infra/errors.js";
@@ -42,27 +42,53 @@ export async function replyToFacebookComment(commentId: string, text: string) {
   return response.data;
 }
 
-export async function generateFacebookCommentReply(
+/** Shared by Facebook and Instagram — the classify/reply prompt itself is platform-neutral. */
+export async function generateCommentReply(
   postText: string,
   commentText: string
 ): Promise<string | null> {
   try {
-    logger.info("Generating AI decision for Facebook comment reply.");
+    logger.info("Generating AI decision for comment reply.");
     const relevantKnowledge = await getRelevantKnowledge(`${postText}\n${commentText}`);
     const prompt = buildCommentClassifyPrompt(postText, commentText, relevantKnowledge);
     const reply = await generateContent(aiConfig.model, prompt);
 
     if (!reply || reply.toUpperCase() === "SKIP") {
-      logger.info("AI classified Facebook comment as non-service-related.");
+      logger.info("AI classified comment as non-service-related.");
       return null;
     }
 
-    logger.info("AI classified Facebook comment as service-related.");
+    logger.info("AI classified comment as service-related.");
     return reply.slice(0, 1000);
   } catch (error) {
-    logger.error("Facebook comment reply generation failed:", { error: errorMessage(error) });
+    logger.error("Comment reply generation failed:", { error: errorMessage(error) });
     return null;
   }
+}
+
+/** Instagram equivalent of `getFacebookPostContext` — a media object's caption. */
+export async function getInstagramMediaContext(mediaId: string): Promise<string> {
+  const cached = postContextCache.get(mediaId);
+  if (cached && cached.expiresAt > Date.now()) {
+    logger.info(`Using cached Instagram media context for ${mediaId}.`);
+    return cached.text;
+  }
+
+  logger.info(`Requesting Instagram media context: ${mediaId}`);
+  const response = await graphGet(mediaId, { fields: "caption,permalink" });
+
+  const mediaText = (response.data.caption || "").trim();
+
+  cachePostContext(mediaId, mediaText || "No post text is available.");
+  return mediaText || "No post text is available.";
+}
+
+export async function replyToInstagramComment(commentId: string, text: string) {
+  logger.info(`Posting public Instagram reply to comment ${commentId}.`);
+  const response = await graphPost(`${commentId}/replies`, { message: text });
+
+  logger.info(`Instagram comment reply API succeeded for ${commentId}.`);
+  return response.data;
 }
 
 export interface IncomingComment {
@@ -105,7 +131,7 @@ export async function moderateComment({
     logger.info(
       `Post context loaded for ${commentId} (${postText.length} characters). Generating AI decision.`
     );
-    const reply = await generateFacebookCommentReply(postText, commentText);
+    const reply = await generateCommentReply(postText, commentText);
     if (!reply) {
       logger.info(
         `Facebook comment ${commentId} was classified as non-service-related; no reply sent.`
@@ -120,6 +146,64 @@ export async function moderateComment({
     // The Graph API's own error detail is already embedded in error.message
     // by integrations/facebook/graph-client.ts, so nothing else to unwrap here.
     logger.error(`Facebook comment reply failed for ${commentId}:`, { error: errorMessage(error) });
+    await forgetIncomingComment(commentId);
+  }
+}
+
+export interface IncomingInstagramComment {
+  commentId: string;
+  mediaId: string;
+  commenterId: string;
+  commentText: string;
+}
+
+/**
+ * Instagram equivalent of `moderateComment`: dedupe → fetch media caption for
+ * context → AI classify/generate → reply. Webhook-only for now — no polling
+ * fallback exists for Instagram (the Facebook one exists specifically because
+ * Page `feed` webhooks were found unreliable for some Pages; no equivalent issue
+ * observed on Instagram yet).
+ */
+export async function moderateInstagramComment({
+  commentId,
+  mediaId,
+  commenterId,
+  commentText,
+}: IncomingInstagramComment): Promise<void> {
+  if (!commentId || !mediaId || !commenterId || !commentText) {
+    return;
+  }
+
+  if (String(commenterId) === String(instagramConfig.igUserId)) {
+    return; // the account commenting on its own media
+  }
+
+  if (!(await rememberIncomingComment(commentId, mediaId, commenterId))) {
+    logger.info(`Duplicate Instagram comment ignored: ${commentId}`);
+    return;
+  }
+
+  try {
+    logger.info(`Fetching media context for Instagram comment ${commentId}.`);
+    const postText = await getInstagramMediaContext(mediaId);
+    logger.info(
+      `Media context loaded for ${commentId} (${postText.length} characters). Generating AI decision.`
+    );
+    const reply = await generateCommentReply(postText, commentText);
+    if (!reply) {
+      logger.info(
+        `Instagram comment ${commentId} was classified as non-service-related; no reply sent.`
+      );
+      return;
+    }
+
+    logger.info(`Service-related Instagram comment detected (${commentId}). Sending public reply.`);
+    await replyToInstagramComment(commentId, reply);
+    logger.info(`Sent Instagram comment reply for ${commentId}.`);
+  } catch (error) {
+    logger.error(`Instagram comment reply failed for ${commentId}:`, {
+      error: errorMessage(error),
+    });
     await forgetIncomingComment(commentId);
   }
 }

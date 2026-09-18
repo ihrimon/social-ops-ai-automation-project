@@ -92,6 +92,16 @@ describe("queueUserMessage", () => {
     const [, pipeline] = updateOne.mock.calls[0];
     expect(pipeline[0].$set.platform).toEqual({ $ifNull: ["$platform", "whatsapp"] });
   });
+
+  it("sets platform via $ifNull when instagram is passed", async () => {
+    const updateOne = vi.fn().mockResolvedValue({});
+    const model = fakeModel({ collection: { updateOne } });
+
+    await queueUserMessage("user-3", "hello", "msg-3", "instagram", model);
+
+    const [, pipeline] = updateOne.mock.calls[0];
+    expect(pipeline[0].$set.platform).toEqual({ $ifNull: ["$platform", "instagram"] });
+  });
 });
 
 describe("pauseUserReplies / resumeUserReplies", () => {

@@ -10,7 +10,7 @@ export function buildCommentClassifyPrompt(
   commentText: string,
   relevantKnowledge: KnowledgeChunk[]
 ): string {
-  return `You reply publicly to comments on a Facebook Page for a web developer.
+  return `You reply publicly to comments on a Facebook or Instagram Page for a web developer.
 
 Page post context:
 "${postText}"

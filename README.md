@@ -1,6 +1,6 @@
 # 🤖 Social Ops AI Automation
 
-AI-driven Facebook Page (+ optional WhatsApp) automation: scheduled article posts, Messenger/WhatsApp reply generation with conversation memory, comment moderation, and a Mongo-backed RAG knowledge base powered by **Google Gemini**.
+AI-driven Facebook Page (+ optional WhatsApp and Instagram) automation: scheduled article posts, multi-channel reply generation with conversation memory, comment moderation, and a Mongo-backed RAG knowledge base powered by **Google Gemini**.
 
 ---
 
@@ -13,6 +13,7 @@ AI-driven Facebook Page (+ optional WhatsApp) automation: scheduled article post
 - [⚙️ Environment Variables](#️-environment-variables)
 - [🔑 Facebook App & Webhook Setup](#-facebook-app--webhook-setup)
 - [📱 WhatsApp Cloud API Setup](#-whatsapp-cloud-api-setup)
+- [📸 Instagram Setup](#-instagram-setup)
 - [🔔 Telegram Urgency Alerts](#-telegram-urgency-alerts)
 - [🧠 Customizing the Knowledge Base](#-customizing-the-knowledge-base)
 - [🛠️ Admin Dashboard](#️-admin-dashboard)
@@ -34,21 +35,22 @@ AI-driven Facebook Page (+ optional WhatsApp) automation: scheduled article post
 - **Crash-safe topic claim**: if article generation or posting fails after a topic is claimed, the topic is reverted to unused so it isn't lost from the queue.
 - **Optional approval gate**: set `REQUIRE_POST_APPROVAL=true` to hold the generated draft for admin approval (via the [Admin Dashboard](#️-admin-dashboard)) instead of auto-publishing. Off by default — the fully-automatic flow above is unchanged.
 
-### 💬 2. Messenger + WhatsApp Auto-Responder
+### 💬 2. Messenger + WhatsApp + Instagram Auto-Responder
 
 - Incoming messages are buffered per user and debounced (`modules/messenger/queue.worker.ts`) so rapid-fire messages get one consolidated AI reply instead of several.
-- Reply generation (`modules/messenger/reply.service.ts`) pulls relevant context via the RAG knowledge store and recent conversation history — shared by both channels.
-- Each conversation records which platform it came from (`pending_replies.platform`) so delivery routes to the right Send API (`integrations/facebook/messenger.ts` or `integrations/whatsapp/send.ts`) — see [WhatsApp Cloud API Setup](#-whatsapp-cloud-api-setup) to enable the second channel (optional, off unless configured).
-- **Human admin handoff (Messenger only)**: detects `is_echo` events from a human agent replying manually and pauses AI replies for that user for a configurable window. WhatsApp Cloud API has no equivalent signal, so this doesn't apply there yet.
+- Reply generation (`modules/messenger/reply.service.ts`) pulls relevant context via the RAG knowledge store and recent conversation history — shared by all three channels.
+- Each conversation records which platform it came from (`pending_replies.platform`) so delivery routes to the right Send API (`integrations/facebook/messenger.ts`, `integrations/whatsapp/send.ts`, or `integrations/instagram/send.ts`) — see [WhatsApp Cloud API Setup](#-whatsapp-cloud-api-setup) / [Instagram Setup](#-instagram-setup) to enable the extra channels (optional, off unless configured).
+- **Human admin handoff (Messenger + Instagram)**: detects `is_echo` events from a human agent replying manually and pauses AI replies for that user for a configurable window — Instagram uses the same mechanism as Messenger. WhatsApp Cloud API has no equivalent signal, so this doesn't apply there yet.
 - Claim/lease based worker with crash recovery (expired leases are reclaimed; already-delivered replies are never resent).
 
-### 💬 3. Public Comment Auto-Reply
+### 💬 3. Public Comment Auto-Reply (Facebook + Instagram)
 
-- Fetches the parent post's text for context (`modules/comments/comment.service.ts`), then asks Gemini to classify the comment as a genuine business inquiry or not (spam/emoji/praise/etc. are skipped).
-- Only replies to top-level comments on the Page's own posts — replies inside a comment thread are ignored to avoid public loops.
-- Runs on two independent paths that share the same dedupe store, so no duplicate replies:
+- Fetches the parent post/media's text for context (`modules/comments/comment.service.ts`), then asks Gemini to classify the comment as a genuine business inquiry or not (spam/emoji/praise/etc. are skipped) — the same classify/reply pipeline serves both platforms.
+- Only replies to top-level comments on the Page's/account's own posts — replies inside a comment thread are ignored to avoid public loops.
+- **Facebook** runs on two independent paths that share the same dedupe store, so no duplicate replies:
   - **Webhook path** (`server/webhook-controller.ts`) — real-time `feed` events.
   - **Polling fallback** (`jobs/comment-poll-worker.ts`) — periodically re-checks recent posts/comments, since Graph API feed webhooks are unreliable for some Pages.
+- **Instagram** is webhook-only for now (`comments` field) — no polling fallback exists yet, since the Facebook one exists for a specific known unreliability issue that hasn't been observed on Instagram.
 
 ### 🧠 4. RAG Knowledge Base
 
@@ -250,6 +252,9 @@ GOOGLE_SHEETS_SHEET_NAME=Leads
 WHATSAPP_ACCESS_TOKEN=
 WHATSAPP_PHONE_NUMBER_ID=
 
+# Instagram DM + comment automation (optional — see "Instagram Setup" below)
+IG_USER_ID=
+
 # Telegram urgency alerts (optional — see "Telegram Urgency Alerts" below)
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
@@ -281,6 +286,33 @@ webhook URL from the section above, so most of the setup is already done.
 5. In API Setup, add your own WhatsApp number as a test recipient (free tier allows up to 5) and send it a message — that's what triggers the bot's first reply.
 
 **Current scope**: text-only replies, using the same RAG/reply pipeline as Messenger (`modules/messenger/reply.service.ts`). No human-admin handoff detection yet (WhatsApp Cloud API has no equivalent to Messenger's `is_echo` signal), and no media/template messages. The bot only ever replies to an inbound message, so it always stays within WhatsApp's 24-hour customer-service window — it never needs a pre-approved template.
+
+---
+
+## 📸 Instagram Setup
+
+Optional third channel (DMs + public comments) — an Instagram professional account
+linked to the Page authenticates with the _same_ Page access token (with a couple
+more permissions granted), so this is the cheapest channel to add.
+
+1. In Meta Business Suite, link an Instagram **professional** (Business/Creator)
+   account to the same Page used above.
+2. Request `instagram_basic`, `instagram_manage_messages`, and
+   `instagram_manage_comments` permissions on the same App/token.
+3. Find the Instagram Business Account ID:
+   `GET /{page-id}?fields=instagram_business_account` (Graph API Explorer, using the
+   Page token) → the returned `id` → `IG_USER_ID`.
+4. App Dashboard → Webhooks → switch the object dropdown to **Instagram** →
+   subscribe to the `messages` and `comments` fields, using the _same_ callback URL
+   and verify token already configured for the Page.
+
+**Current scope**: DMs get full parity with Messenger (same debounce/RAG/reply
+pipeline, same human-admin handoff detection — Instagram's `is_echo` mechanism is
+identical to Messenger's). Comment moderation reuses the same AI classify/reply
+pipeline as Facebook comments (`modules/comments/comment.service.ts`), webhook-only
+— no polling fallback, since that exists for Facebook specifically because Page
+`feed` webhooks were found unreliable, and there's no equivalent issue observed on
+Instagram.
 
 ---
 

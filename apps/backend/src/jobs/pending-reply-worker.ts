@@ -20,6 +20,7 @@ import { extractAndSaveLeadRequirements } from "../modules/messenger/lead-extrac
 import { checkAndAlertUrgency } from "../modules/messenger/urgency-alert.service.js";
 import { sendMessengerReply } from "../integrations/facebook/messenger.js";
 import { sendWhatsAppReply } from "../integrations/whatsapp/send.js";
+import { sendInstagramReply } from "../integrations/instagram/send.js";
 
 let pendingReplyWorkerRunning = false;
 
@@ -44,7 +45,12 @@ async function processPendingReply(job: PendingReplyJob): Promise<void> {
       return;
     }
 
-    const sendReply = job.platform === "whatsapp" ? sendWhatsAppReply : sendMessengerReply;
+    const sendReply =
+      job.platform === "whatsapp"
+        ? sendWhatsAppReply
+        : job.platform === "instagram"
+          ? sendInstagramReply
+          : sendMessengerReply;
     const sentResult: any = await sendReply(job.userId, reply);
     if (!sentResult?.message_id) {
       throw new Error("Messenger did not return a message ID.");

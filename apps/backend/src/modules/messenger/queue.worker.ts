@@ -13,7 +13,7 @@ export interface PendingReplyMessage {
 export interface PendingReplyJob {
   _id: unknown;
   userId: string;
-  platform: "messenger" | "whatsapp";
+  platform: "messenger" | "whatsapp" | "instagram";
   messages: PendingReplyMessage[];
   claimId: string;
   claimedAt: Date;
@@ -39,7 +39,7 @@ export async function queueUserMessage(
   userId: string,
   text: string,
   messageId: string,
-  platform: "messenger" | "whatsapp" = "messenger",
+  platform: "messenger" | "whatsapp" | "instagram" = "messenger",
   model: Model<PendingReplyDoc> = PendingReply
 ): Promise<void> {
   const now = new Date();

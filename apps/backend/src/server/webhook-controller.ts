@@ -1,22 +1,32 @@
 import express, { Router, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
-import { facebookConfig, rateLimitConfig } from "../config/env.js";
+import { facebookConfig, instagramConfig, rateLimitConfig } from "../config/env.js";
 import { logger } from "../infra/logger.js";
 import { errorMessage } from "../infra/errors.js";
 import { addConversationMessage } from "../modules/messenger/conversation.store.js";
 import { pauseUserReplies, queueUserMessage } from "../modules/messenger/queue.worker.js";
 import { isBotSentMessage, rememberIncomingMessage } from "../modules/messenger/dedupe.store.js";
-import { moderateComment } from "../modules/comments/comment.service.js";
+import { moderateComment, moderateInstagramComment } from "../modules/comments/comment.service.js";
 import {
   isValidWebhookVerification,
   verifyFacebookSignature,
 } from "../integrations/facebook/webhook-verifier.js";
 import { isWhatsAppConfigured } from "../integrations/whatsapp/send.js";
+import { isInstagramConfigured } from "../integrations/instagram/send.js";
 import { webhookPayloadSchema, type WebhookPayload } from "./webhook.schema.js";
 
 const MAX_BODY_BYTES = "1mb";
 
-async function processMessagingEvent(event: any): Promise<void> {
+/**
+ * Handles one Messenger/Instagram `messaging` event. Instagram DMs use the exact
+ * same event shape as Messenger (same underlying Meta platform), so this takes a
+ * `platform` param rather than being duplicated — only the "who am I" comparison
+ * (for echo/handoff detection) and the queued platform differ.
+ */
+async function processMessagingEvent(
+  event: any,
+  platform: "messenger" | "instagram" = "messenger"
+): Promise<void> {
   const senderId = event.sender?.id;
   const recipientId = event.recipient?.id;
   const message = event.message;
@@ -25,8 +35,10 @@ async function processMessagingEvent(event: any): Promise<void> {
     return;
   }
 
+  const selfId = platform === "instagram" ? instagramConfig.igUserId : facebookConfig.pageId;
+
   // Intercept human admin replies (echo events)
-  if (message.is_echo || senderId === facebookConfig.pageId) {
+  if (message.is_echo || senderId === selfId) {
     const actualUserId = recipientId;
     const messageText = message.text?.trim();
     const messageId = message.mid;
@@ -49,19 +61,19 @@ async function processMessagingEvent(event: any): Promise<void> {
   const messageId = message.mid || `${senderId}:${event.timestamp || Date.now()}`;
 
   if (!(await rememberIncomingMessage(messageId, senderId))) {
-    logger.info(`Duplicate Messenger event ignored: ${messageId}`);
+    logger.info(`Duplicate ${platform} event ignored: ${messageId}`);
     return;
   }
 
   const messageText = message.text?.trim();
 
   if (!messageText) {
-    logger.info(`Non-text Messenger event ignored: ${messageId}`);
+    logger.info(`Non-text ${platform} event ignored: ${messageId}`);
     return;
   }
 
-  await queueUserMessage(senderId, messageText, messageId);
-  logger.info(`Queued Messenger message from ${senderId} for consolidated reply.`);
+  await queueUserMessage(senderId, messageText, messageId, platform);
+  logger.info(`Queued ${platform} message from ${senderId} for consolidated reply.`);
 }
 
 async function processCommentChange(change: any): Promise<void> {
@@ -112,6 +124,56 @@ async function processCommentChange(change: any): Promise<void> {
   }
 
   await moderateComment({ commentId, postId, commenterId, commentText });
+}
+
+let warnedInstagramNotConfigured = false;
+
+/**
+ * Handles Instagram comment-webhook `changes` entries (`instagram` object).
+ * Distinct field names from Facebook's feed-change shape (`id`/`text`/`media.id`
+ * instead of `comment_id`/`message`/`post_id`), which is why this is a separate
+ * parser rather than sharing `processCommentChange`.
+ */
+async function processInstagramCommentChange(change: any): Promise<void> {
+  if (change.field !== "comments") {
+    return;
+  }
+
+  if (!isInstagramConfigured()) {
+    if (!warnedInstagramNotConfigured) {
+      logger.warn("Instagram comment received but IG_USER_ID is not configured. Ignoring.");
+      warnedInstagramNotConfigured = true;
+    }
+    return;
+  }
+
+  const value = change.value || {};
+  const commentId = value.id;
+  const mediaId = value.media?.id;
+  const commenterId = value.from?.id;
+  const commentText = value.text?.trim();
+
+  logger.info("Instagram comment change received:", {
+    commentId,
+    mediaId,
+    commenterId,
+    hasCommentText: Boolean(commentText),
+  });
+
+  let ignoreReason = null;
+  if (!commentId) ignoreReason = "comment id is missing";
+  else if (!mediaId) ignoreReason = "media id is missing";
+  else if (!commenterId) ignoreReason = "comment author ID is missing";
+  else if (!commentText) ignoreReason = "comment text is missing";
+  else if (String(commenterId) === String(instagramConfig.igUserId))
+    ignoreReason = "comment was written by this account";
+
+  if (ignoreReason) {
+    logger.info(`Instagram comment ignored (${commentId || "unknown"}): ${ignoreReason}.`);
+    return;
+  }
+
+  await moderateInstagramComment({ commentId, mediaId, commenterId, commentText });
 }
 
 let warnedWhatsAppNotConfigured = false;
@@ -196,6 +258,19 @@ async function handleWebhookPost(req: Request, res: Response): Promise<void> {
       const whatsappChanges = payload.entry.flatMap((entry) => entry.changes || []);
       for (const change of whatsappChanges) {
         await processWhatsAppChange(change);
+      }
+      return;
+    }
+
+    if (payload.object === "instagram") {
+      const instagramEvents = payload.entry.flatMap((entry) => entry.messaging || []);
+      for (const event of instagramEvents) {
+        await processMessagingEvent(event, "instagram");
+      }
+
+      const instagramCommentChanges = payload.entry.flatMap((entry) => entry.changes || []);
+      for (const change of instagramCommentChanges) {
+        await processInstagramCommentChange(change);
       }
       return;
     }
