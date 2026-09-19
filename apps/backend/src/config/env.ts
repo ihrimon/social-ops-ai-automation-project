@@ -51,6 +51,8 @@ export const serverConfig = {
 export const appConfig = {
   nodeEnv: process.env.NODE_ENV || "development",
   logLevel: process.env.LOG_LEVEL || "info",
+  /** When true, no cron jobs/background workers start — only the HTTP server + DB init. Safe for local/staging boot verification. */
+  disableJobs: process.env.DISABLE_JOBS === "true",
 };
 
 /** Error tracking (Sentry). */

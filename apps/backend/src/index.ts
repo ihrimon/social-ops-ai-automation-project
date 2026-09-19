@@ -1,3 +1,4 @@
+import { appConfig } from "./config/env.js";
 import { logger } from "./infra/logger.js";
 import { errorMessage } from "./infra/errors.js";
 import { initSentry, captureException } from "./infra/sentry.js";
@@ -34,8 +35,15 @@ async function shutdown(
 async function bootstrap(): Promise<void> {
   initSentry();
 
-  scheduleDailyPostJob();
-  scheduleWeeklyReportJob();
+  // DISABLE_JOBS skips scheduling entirely, rather than checking inside each job —
+  // some (e.g. startCommentPollWorker) run their first live-API cycle synchronously
+  // on startup, not just on a timer, so a plain "don't start" is the only fully safe gate.
+  if (appConfig.disableJobs) {
+    logger.info("DISABLE_JOBS is set — background jobs/workers will not start.");
+  } else {
+    scheduleDailyPostJob();
+    scheduleWeeklyReportJob();
+  }
 
   // Initialize Database connection, warm up indexes, and populate local knowledge cache
   await initDatabase().catch((err) => {
@@ -45,8 +53,10 @@ async function bootstrap(): Promise<void> {
     );
   });
 
-  startPendingReplyWorker();
-  startCommentPollWorker();
+  if (!appConfig.disableJobs) {
+    startPendingReplyWorker();
+    startCommentPollWorker();
+  }
 
   const webhookServer = startWebhookServer();
 

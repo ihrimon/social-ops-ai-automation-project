@@ -202,6 +202,7 @@ FB_GRAPH_API_VERSION=v23.0
 PORT=3000
 NODE_ENV=development
 LOG_LEVEL=info
+DISABLE_JOBS=false
 
 # MongoDB
 MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/?appName=Cluster0
@@ -416,7 +417,7 @@ A multi-stage `Dockerfile` (build → prune dev deps → minimal `node:20-alpine
 docker compose up -d --build
 ```
 
-⚠️ **This loads your real `.env` into the container** (`env_file: apps/backend/.env`). The moment it starts, the daily-post cron, Messenger reply worker, and comment-polling worker all start running against your **actual** Facebook Page and Gemini account — there is no dry-run/staging mode yet. Only run this against a `.env` you're prepared to see take real, live action with (or point `FB_PAGE_ACCESS_TOKEN`/`GEMINI_API_KEY` at throwaway/test credentials first).
+⚠️ **This loads your real `.env` into the container** (`env_file: apps/backend/.env`). The moment it starts, the daily-post cron, Messenger reply worker, comment-polling worker, and weekly report job all start running against your **actual** Facebook Page and Gemini account. Set `DISABLE_JOBS=true` in `.env` first if you just want to verify the container boots (HTTP server + DB init only, no cron/workers, no outbound API calls) — unset/`false` it again to run for real. Otherwise, only run this against a `.env` you're prepared to see take real, live action with (or point `FB_PAGE_ACCESS_TOKEN`/`GEMINI_API_KEY` at throwaway/test credentials first).
 
 ```bash
 docker compose down   # stop and remove containers (mongo-data volume persists)
