@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { approvePost, listPendingPosts, listPosts, rejectPost, type PostLog } from "../api/client";
+import {
+  approvePost,
+  describeApiError,
+  listPendingPosts,
+  listPosts,
+  rejectPost,
+  type PostLog,
+} from "../api/client";
 
 function StatusBadge({ status }: { status: string }) {
   return <span className={`badge badge-${status}`}>{status}</span>;
@@ -9,14 +16,21 @@ export default function Posts() {
   const [pending, setPending] = useState<PostLog[]>([]);
   const [recent, setRecent] = useState<PostLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
-    const [pendingRes, recentRes] = await Promise.all([listPendingPosts(), listPosts()]);
-    setPending(pendingRes.posts);
-    setRecent(recentRes.posts);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const [pendingRes, recentRes] = await Promise.all([listPendingPosts(), listPosts()]);
+      setPending(pendingRes.posts);
+      setRecent(recentRes.posts);
+    } catch (error) {
+      setLoadError(describeApiError(error));
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -25,23 +39,32 @@ export default function Posts() {
 
   async function handleApprove(id: string) {
     setActionError(null);
-    const result = await approvePost(id);
-    if (!result.ok) {
-      setActionError(result.error || "Approve failed.");
+    try {
+      const result = await approvePost(id);
+      if (!result.ok) {
+        setActionError(result.error || "Approve failed.");
+      }
+    } catch (error) {
+      setActionError(describeApiError(error));
     }
     await load();
   }
 
   async function handleReject(id: string) {
     setActionError(null);
-    const result = await rejectPost(id);
-    if (!result.ok) {
-      setActionError(result.error || "Reject failed.");
+    try {
+      const result = await rejectPost(id);
+      if (!result.ok) {
+        setActionError(result.error || "Reject failed.");
+      }
+    } catch (error) {
+      setActionError(describeApiError(error));
     }
     await load();
   }
 
   if (loading) return <p>Loading...</p>;
+  if (loadError) return <p className="error-text">{loadError}</p>;
 
   return (
     <div>

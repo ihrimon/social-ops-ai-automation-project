@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  describeApiError,
   getConversation,
   pauseConversation,
   resumeConversation,
@@ -57,14 +58,22 @@ export default function ConversationDetail() {
   const { userId = "" } = useParams();
   const [data, setData] = useState<ConversationDetailData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [note, setNote] = useState("");
 
   async function load() {
     setLoading(true);
-    const result = await getConversation(userId);
-    setData(result);
-    setNote(result.leadNote ?? "");
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const result = await getConversation(userId);
+      setData(result);
+      setNote(result.leadNote ?? "");
+    } catch (error) {
+      setLoadError(describeApiError(error));
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -72,22 +81,24 @@ export default function ConversationDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  async function handlePause() {
-    await pauseConversation(userId);
+  async function runAction(action: () => Promise<unknown>) {
+    setActionError(null);
+    try {
+      await action();
+    } catch (error) {
+      setActionError(describeApiError(error));
+    }
     await load();
   }
 
-  async function handleResume() {
-    await resumeConversation(userId);
-    await load();
-  }
+  const handlePause = () => runAction(() => pauseConversation(userId));
+  const handleResume = () => runAction(() => resumeConversation(userId));
+  const handleLeadChange = (status: LeadStatus) =>
+    runAction(() => setConversationLead(userId, status, note || undefined));
 
-  async function handleLeadChange(status: LeadStatus) {
-    await setConversationLead(userId, status, note || undefined);
-    await load();
-  }
-
-  if (loading || !data) return <p>Loading...</p>;
+  if (loading) return <p>Loading...</p>;
+  if (loadError) return <p className="error-text">{loadError}</p>;
+  if (!data) return null;
 
   return (
     <div>
@@ -103,6 +114,7 @@ export default function ConversationDetail() {
           <button onClick={handlePause}>Pause AI (hand off to human)</button>
         )}
       </div>
+      {actionError && <p className="error-text">{actionError}</p>}
       {data.paused && (
         <p className="muted">
           AI replies paused

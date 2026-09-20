@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  describeApiError,
   getLeadAnalytics,
   getPostAnalytics,
   type Lead,
@@ -18,17 +19,21 @@ export default function Analytics() {
   const [stats, setStats] = useState<LeadStats | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([getPostAnalytics(10), getLeadAnalytics(20)]).then(([postRes, leadRes]) => {
-      setPosts(postRes.posts);
-      setStats(leadRes.stats);
-      setLeads(leadRes.leads);
-      setLoading(false);
-    });
+    Promise.all([getPostAnalytics(10), getLeadAnalytics(20)])
+      .then(([postRes, leadRes]) => {
+        setPosts(postRes.posts);
+        setStats(leadRes.stats);
+        setLeads(leadRes.leads);
+      })
+      .catch((error) => setLoadError(describeApiError(error)))
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <p>Loading...</p>;
+  if (loadError) return <p className="error-text">{loadError}</p>;
 
   return (
     <div>

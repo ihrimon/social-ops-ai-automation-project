@@ -1,19 +1,21 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { listConversations, type ConversationSummary } from "../api/client";
+import { describeApiError, listConversations, type ConversationSummary } from "../api/client";
 
 export default function Conversations() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    listConversations().then((res) => {
-      setConversations(res.conversations);
-      setLoading(false);
-    });
+    listConversations()
+      .then((res) => setConversations(res.conversations))
+      .catch((error) => setLoadError(describeApiError(error)))
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <p>Loading...</p>;
+  if (loadError) return <p className="error-text">{loadError}</p>;
 
   return (
     <div>

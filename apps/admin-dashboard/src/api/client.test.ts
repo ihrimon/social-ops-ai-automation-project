@@ -2,11 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   clearToken,
+  describeApiError,
   getLeadAnalytics,
   getPostAnalytics,
   getToken,
+  listConversations,
   login,
   setConversationLead,
+  setUnauthorizedHandler,
 } from "./client";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -131,6 +134,69 @@ describe("login", () => {
 
     const [, options] = fetchMock.mock.calls[0];
     expect(options.headers.Authorization).toBe("Bearer existing-token");
+  });
+});
+
+describe("expired-session handling", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", createFakeStorage());
+  });
+
+  afterEach(() => {
+    setUnauthorizedHandler(null);
+    vi.unstubAllGlobals();
+  });
+
+  it("clears the token and calls the unauthorized handler when an admin request comes back 401", async () => {
+    localStorage.setItem("admin_token", "expired-token");
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(jsonResponse(401, { error: "Invalid or expired admin session token." }))
+    );
+
+    await expect(listConversations()).rejects.toBeInstanceOf(ApiError);
+
+    expect(getToken()).toBeNull();
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it("does not treat a wrong password on the login form as an expired session", async () => {
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse(401, { error: "Invalid password." }))
+    );
+
+    await expect(login("wrong")).rejects.toThrow("Invalid password.");
+
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("doesn't call the handler for non-401 failures", async () => {
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(500, {})));
+
+    await expect(listConversations()).rejects.toBeInstanceOf(ApiError);
+
+    expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+describe("describeApiError", () => {
+  it("uses an ApiError's own message", () => {
+    expect(describeApiError(new ApiError(500, "Database exploded."))).toBe("Database exploded.");
+  });
+
+  it("explains an unreachable backend (fetch rejecting with a network error)", () => {
+    expect(describeApiError(new TypeError("Failed to fetch"))).toContain(
+      "Could not reach the backend"
+    );
   });
 });
 

@@ -22,6 +22,19 @@ export class ApiError extends Error {
   }
 }
 
+let onUnauthorized: (() => void) | null = null;
+
+/** Lets the app (which owns the router) decide where to send the user when a session token is rejected. */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler;
+}
+
+/** Human-readable reason for a failed request — an API error's own message, or a hint when the backend was unreachable. */
+export function describeApiError(error: unknown): string {
+  if (error instanceof ApiError) return error.message;
+  return "Could not reach the backend. Check that it is running and that VITE_API_BASE_URL matches its PORT.";
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -34,6 +47,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (res.status === 401) {
     clearToken();
+    // A wrong password on the login form is also a 401 — that's not an expired session, so don't redirect.
+    if (path !== "/admin/login") onUnauthorized?.();
   }
 
   const data = await res.json().catch(() => ({}));
