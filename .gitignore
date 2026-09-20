@@ -1,9 +1,6 @@
 node_modules
 dist
 backups
-.env
-.env.local
-.env.production
 images
 conversationHistory.json
 *.log
@@ -11,3 +8,4 @@ conversationHistory.json
 # Ignore all markdown files except README.md
 *.md
 !README.md
+config.bat

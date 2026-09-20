@@ -1,0 +1,83 @@
+# Render Blueprint — backend (Docker, free web service) + admin dashboard (free static site).
+# Spec: https://render.com/docs/blueprint-spec
+#
+# Secrets are NEVER stored here: every `sync: false` variable is prompted for in the
+# Render dashboard when the Blueprint is first applied. See README → "Deploying to Render".
+services:
+  # ---------------------------------------------------------------------------
+  # Backend API + webhooks + background workers/cron (all run inside this one process)
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: social-ops-backend
+    runtime: docker
+    plan: free
+    region: singapore # pick the region closest to your MongoDB Atlas cluster
+    dockerfilePath: ./apps/backend/Dockerfile
+    dockerContext: . # repo root — npm workspaces needs the root lockfile
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      # Do NOT set PORT — Render injects its own and the app reads process.env.PORT.
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY_HOPS # behind Render's proxy: key rate limiting off the real client IP
+        value: "1"
+      - key: REQUIRE_POST_APPROVAL # safe first deploy: daily posts wait for approval in the dashboard
+        value: "true"
+      - key: FB_GRAPH_API_VERSION
+        value: v26.0
+      - key: GEMINI_EMBEDDING_MODEL
+        value: gemini-embedding-001
+      - key: HORDE_API_BASE
+        value: https://aihorde.net/api/v2
+      # --- prompted on first apply (copy the values from apps/backend/.env) ---
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: FB_PAGE_ACCESS_TOKEN
+        sync: false
+      - key: FB_PAGE_ID
+        sync: false
+      - key: FB_VERIFY_TOKEN
+        sync: false
+      - key: FB_APP_SECRET
+        sync: false
+      - key: FB_APP_ID
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: ADMIN_DASHBOARD_PASSWORD
+        sync: false
+      - key: ADMIN_DASHBOARD_JWT_SECRET
+        sync: false
+      - key: CORS_ORIGIN # the dashboard's public URL, e.g. https://social-ops-dashboard.onrender.com
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET_KEY
+        sync: false
+      - key: AI_HORDE_API_KEY
+        sync: false
+
+  # ---------------------------------------------------------------------------
+  # Admin dashboard (React SPA) — static hosting, no server to keep awake
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: social-ops-dashboard
+    runtime: static
+    buildCommand: npm ci --include=dev && npm run build --workspace=apps/admin-dashboard
+    staticPublishPath: ./apps/admin-dashboard/dist
+    routes:
+      # React Router uses real paths (/conversations, /analytics, ...) — without this,
+      # refreshing any page other than "/" would 404.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION # Vite 7 needs Node >= 20.19
+        value: "22"
+      - key: HUSKY # skip installing git hooks during the CI-style build
+        value: "0"
+      - key: VITE_API_BASE_URL # baked into the bundle at build time — the backend's public URL
+        sync: false

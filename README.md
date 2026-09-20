@@ -19,6 +19,7 @@ AI-driven Facebook Page (+ optional WhatsApp and Instagram) automation: schedule
 - [🛠️ Admin Dashboard](#️-admin-dashboard)
 - [📊 Google Sheets Lead Sync](#-google-sheets-lead-sync)
 - [🚀 Running the Project](#-running-the-project)
+- [☁️ Deploying to Render (free tier)](#️-deploying-to-render-free-tier)
 - [🧪 Testing & Quality](#-testing--quality)
 - [🛡️ Reliability & Security Notes](#️-reliability--security-notes)
 
@@ -166,7 +167,7 @@ docker-compose.yml                  # Builds apps/backend/Dockerfile with the re
 
 ## 📋 Prerequisites
 
-- **Node.js** 18+
+- **Node.js** 20.19+ (required by Vite 7, Mongoose 9 and Vitest 4)
 - **MongoDB** (Atlas recommended for Vector Search) or local MongoDB 6.0+
 - **Google Gemini API key** ([Google AI Studio](https://aistudio.google.com/))
 - **Facebook Page** with admin access
@@ -271,7 +272,7 @@ TELEGRAM_CHAT_ID=
 2. **Request permissions**: `pages_manage_posts`, `pages_messaging`, `pages_read_engagement`, `pages_show_list`.
 3. **Page ID / App Secret**: Page → About → Page ID; App Dashboard → App Settings → Basic → App Secret.
 4. **Long-lived Page access token**: Graph API Explorer → select the Page → generate a token with the permissions above → extend it via the [Access Token Debugger](https://developers.facebook.com/tools/debug/accesstoken/).
-5. **Local tunneling**: expose port 3000, e.g. `ngrok http 3000` or `cloudflared tunnel --url http://localhost:3000`.
+5. **Local tunneling**: expose the backend's `PORT` (default 3000 — use whatever your `.env` sets), e.g. `ngrok http <PORT>` or `cloudflared tunnel --url http://localhost:<PORT>`.
 6. **Webhook subscription**: App Dashboard → Webhooks → Page → Callback URL `https://<your-tunnel>/webhook`, Verify Token = `FB_VERIFY_TOKEN`. Subscribe to `messages`, `messaging_postbacks`, `message_echoes`, `feed`.
 7. Messenger → Settings → Webhooks → subscribe your Page.
 
@@ -422,6 +423,38 @@ docker compose up -d --build
 ```bash
 docker compose down   # stop and remove containers (mongo-data volume persists)
 ```
+
+---
+
+## ☁️ Deploying to Render (free tier)
+
+[`render.yaml`](render.yaml) is a [Render Blueprint](https://render.com/docs/blueprint-spec) that creates two services from this repo: the **backend** (Docker web service, uses [apps/backend/Dockerfile](apps/backend/Dockerfile)) and the **admin dashboard** (static site). No credit card is needed for Render's free plan.
+
+**Before you start**
+
+1. Push `render.yaml` to the branch Render will deploy (`main`).
+2. **MongoDB Atlas → Network Access**: allow `0.0.0.0/0`. Render's free instances don't have a fixed outbound IP, so an allow-list of specific IPs can't work. Use a strong database password.
+3. **Stop your local backend and ngrok** so two copies aren't running against the same Page/database.
+
+**Deploy**
+
+1. Render Dashboard → **New → Blueprint** → connect this GitHub repo → branch `main`. Render reads `render.yaml` and asks for every `sync: false` value — copy them from your local `apps/backend/.env` (`GEMINI_API_KEY`, `FB_*`, `MONGODB_URI`, `ADMIN_DASHBOARD_*`, `CLOUDINARY_*`, `AI_HORDE_API_KEY`).
+2. Two values point at each other, so enter the URLs Render will most likely assign (service name + `.onrender.com`):
+   - backend `CORS_ORIGIN` → `https://social-ops-dashboard.onrender.com`
+   - dashboard `VITE_API_BASE_URL` → `https://social-ops-backend.onrender.com`
+3. After the first deploy, check the real URLs. If Render added a suffix because a name was taken, fix `CORS_ORIGIN` on the backend and `VITE_API_BASE_URL` on the dashboard, then **manually redeploy the dashboard** — Vite bakes `VITE_*` values into the bundle at build time.
+4. Verify: open `https://<backend>.onrender.com/health` (`{"status":"ok"}`) and `/ready` (`mongo: connected`). The first request after idle takes about a minute.
+5. Meta App Dashboard → Webhooks: replace the ngrok Callback URL with `https://<backend>.onrender.com/webhook` (same Verify Token) and verify it again.
+6. Open the dashboard URL and log in with `ADMIN_DASHBOARD_PASSWORD`.
+
+The Blueprint ships with `REQUIRE_POST_APPROVAL=true` so nothing is auto-published on a first deploy; set it to `false` in the Render environment settings when you want the daily post to go out automatically. Optional integrations (Telegram, WhatsApp, Instagram, Google Sheets, `DISABLE_JOBS`) aren't in the Blueprint — add them later under the backend's Environment tab, using the [Environment Variables](#️-environment-variables) list.
+
+**Free-plan limits that affect this app** (from [Render's free-tier docs](https://render.com/docs/free))
+
+- A free web service **spins down after 15 minutes without inbound traffic** and takes about a minute to spin back up on the next HTTP request. The daily-post and weekly-report crons and both polling workers run _inside_ that process, so while it's asleep they don't run — a missed cron is **not** retried on wake-up. Incoming Messenger messages and comments are not lost (they're queued/deduped in MongoDB), but the first reply after idle is slow.
+- Free instances get 750 hours per month; if they run out, Render suspends free services until the next month.
+- The filesystem is ephemeral: edits made through the dashboard's knowledge-base editor don't survive a restart or redeploy. Change `apps/backend/knowledge-base.json` in the repo instead.
+- Render has no free background-worker or cron instance type, which is why everything stays in the one web service.
 
 ---
 

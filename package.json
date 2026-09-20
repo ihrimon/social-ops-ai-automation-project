@@ -5,10 +5,10 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace=apps/backend",
-    "build": "npm run build --workspace=apps/backend",
-    "build:dashboard": "npm run build --workspace=apps/admin-dashboard",
-    "start": "npm run start --workspace=apps/backend",
+    "dev": "node init && npm run dev --workspace=apps/backend",
+    "build": "node init && npm run build --workspace=apps/backend",
+    "build:dashboard": "node init && npm run build --workspace=apps/admin-dashboard",
+    "start": "node init && npm run start --workspace=apps/backend",
     "typecheck": "npm run typecheck --workspace=apps/backend",
     "typecheck:tests": "npm run typecheck:tests --workspace=apps/backend",
     "typecheck:dashboard": "npm run typecheck --workspace=apps/admin-dashboard",
